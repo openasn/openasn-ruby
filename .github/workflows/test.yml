@@ -34,8 +34,13 @@ jobs:
       - name: Run tests
         run: bundle exec rake test
 
-      - name: Benchmark (informational)
-        run: bundle exec rake bench || true
+      # Numbers are informational (shared-runner noise), but the generous
+      # 100µs ceiling is asserted: it can only trip on an algorithmic
+      # regression (e.g. a binary search degrading to a scan), not noise.
+      - name: Benchmark (regression tripwire at 4x the perf target)
+        env:
+          BENCH_MAX_US: "100"
+        run: bundle exec rake bench
 
       - name: Upload test results
         if: failure()

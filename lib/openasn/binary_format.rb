@@ -137,9 +137,11 @@ module OpenASN
       end
     end
 
-    # Arrays mode: unpack once into parallel Integer arrays for ~2µs
-    # lookups at roughly 8x the memory (PRD-measured trade-off). Worth it
-    # for lookup-heavy hot paths; configure via `memory_mode :arrays`.
+    # Arrays mode: unpack once into parallel Integer arrays. Measured on
+    # the real dataset: full lookups drop from ~15µs to ~9µs (the raw
+    # range probe alone is ~2µs, but IP parsing + overlay checks dominate
+    # the classify pipeline) at several× the memory. Worth it for
+    # lookup-heavy batch paths; configure via `memory_mode :arrays`.
     class ArraysBase
       attr_reader :count
 

@@ -9,8 +9,8 @@ OpenASN.configure do |config|
   # from the bundled seed and re-downloads (~15MB) on first refresh.
   # config.data_dir = Rails.root.join("storage", "openasn")
 
-  # :packed → ~11MB RSS, ~20µs per lookup (right for almost everyone)
-  # :arrays → ~8x the memory, ~2µs per lookup (lookup-heavy pipelines)
+  # :packed → ~11MB data resident, ~15-25µs per lookup (right for almost everyone)
+  # :arrays → several× the memory, ~9µs per lookup (lookup-heavy batch pipelines)
   # config.memory_mode = :packed
 
   # Allow automatic refreshes (UpdateJob + boot staleness check).

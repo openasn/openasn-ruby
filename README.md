@@ -179,7 +179,7 @@ Measured on the bundled real dataset (433k+ IPv4 ranges, 125k+ IPv6, full overla
 | `:packed` (default) | ~15µs | ~68k/sec/core | ~11MB data |
 | `:arrays` | ~9µs | ~108k/sec/core | ~40MB data |
 
-Run `rake bench` to measure on your hardware.
+(Apple M-series numbers; GitHub's shared CI runners measure ~24µs packed / ~12µs arrays. CI asserts a generous 100µs ceiling as a regression tripwire.) Run `rake bench` to measure on your hardware.
 
 ## Data provenance & licensing
 

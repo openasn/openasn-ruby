@@ -12,8 +12,13 @@ module OpenASN
     # or every boot starts from the bundled seed + a fresh download.
     attr_writer :data_dir
 
-    # :packed → ~11MB RSS for v4+v6, ~20µs/lookup (default; right for web apps)
-    # :arrays → ~8x memory, ~2µs/lookup (for lookup-heavy pipelines)
+    # Measured on the real dataset, full classify (parse + all layers):
+    # :packed → ~11MB data resident; ~15µs/lookup on Apple Silicon,
+    #           ~24µs on GitHub's shared CI runners (default; right for web apps)
+    # :arrays → several× the memory; ~9µs/lookup (~1.6x faster — the raw
+    #           range probe is ~2µs, but IP parsing + overlay checks
+    #           dominate, so the full-lookup win is smaller than that
+    #           suggests). For lookup-heavy batch pipelines.
     attr_reader :memory_mode
 
     # Whether UpdateJob/boot staleness checks may refresh data automatically.
@@ -47,6 +52,12 @@ module OpenASN
     # Reserved for future OpenASN Pro editions. Deliberately inert in the
     # open gem — configuring it does nothing today and never will for the
     # free dataset (see the data repo's open-data contract).
+    #
+    # Tier C BYOD adapters (bring-your-own MaxMind/IP2Location databases)
+    # are post-MVP and deliberately ship NO placeholder keys here: new
+    # config keys are additive and non-breaking to introduce later, whereas
+    # a placeholder whose shape turns out wrong would force a breaking
+    # rename. They'll appear alongside the adapters themselves.
     attr_accessor :api_key
 
     TIER_B_DEFAULTS = {
