@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary = "Offline IP origin intelligence: classify IPs as residential, mobile, hosting, VPN, Tor, relay — zero API calls"
   spec.description = "OpenASN classifies where an IP address is really coming from — residential ISP, mobile carrier, hosting/datacenter, VPN, Tor exit, iCloud Private Relay, enterprise gateway, business, education, government, CGNAT, or unknown — entirely offline, in microseconds, with zero runtime dependencies and zero API calls. It bundles a seed of the open OpenASN dataset (CC0), refreshes it nightly from GitHub Releases, and layers fast-moving overlays (Tor exits, cloud ranges, Apple Private Relay) fetched by your own server from the original authorities. Verdict-first API with full explainability: every classification is auditable to its source."
-  spec.homepage = "https://github.com/openasn/ruby"
+  spec.homepage = "https://github.com/openasn/openasn-ruby"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1.0"
 
@@ -18,8 +18,8 @@ Gem::Specification.new do |spec|
 
   spec.metadata["rubygems_mfa_required"] = "true"
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/openasn/ruby"
-  spec.metadata["changelog_uri"] = "https://github.com/openasn/ruby/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/openasn/openasn-ruby"
+  spec.metadata["changelog_uri"] = "https://github.com/openasn/openasn-ruby/blob/main/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.

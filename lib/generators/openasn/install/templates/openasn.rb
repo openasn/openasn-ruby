@@ -1,5 +1,5 @@
 # OpenASN — offline IP origin intelligence.
-# Docs: https://github.com/openasn/ruby
+# Docs: https://github.com/openasn/openasn-ruby
 #
 # Everything below shows the DEFAULT — uncomment only what you change.
 

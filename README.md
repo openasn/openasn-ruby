@@ -1,6 +1,6 @@
 # 🛰️ `openasn` — offline IP origin intelligence for Ruby
 
-[![Gem Version](https://badge.fury.io/rb/openasn.svg)](https://badge.fury.io/rb/openasn) [![Build Status](https://github.com/openasn/ruby/workflows/Tests/badge.svg)](https://github.com/openasn/ruby/actions)
+[![Gem Version](https://badge.fury.io/rb/openasn.svg)](https://badge.fury.io/rb/openasn) [![Build Status](https://github.com/openasn/openasn-ruby/workflows/Tests/badge.svg)](https://github.com/openasn/openasn-ruby/actions)
 
 > [!TIP]
 > **🚀 Ship your next Rails app 10x faster!** I've built **[RailsFast](https://railsfast.com/?ref=openasn)**, a production-ready Rails boilerplate template that comes with everything you need to launch a software business in days, not weeks. Go [check it out](https://railsfast.com/?ref=openasn)!
@@ -198,7 +198,7 @@ rake seed:refresh        # pull the latest data release into lib/openasn/data/se
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/openasn/ruby. Wrong verdict for an IP? That's usually a *data* issue — check `result.sources` and open it against [openasn/openasn](https://github.com/openasn/openasn) (the override files are one sourced line per PR).
+Bug reports and pull requests are welcome on GitHub at https://github.com/openasn/openasn-ruby. Wrong verdict for an IP? That's usually a *data* issue — check `result.sources` and open it against [openasn/openasn](https://github.com/openasn/openasn) (the override files are one sourced line per PR).
 
 ## License
 
