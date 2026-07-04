@@ -7,7 +7,7 @@ module OpenASN
       ActiveSupport.on_load(:active_job) { require "openasn/update_job" }
     end
 
-    # Opportunistic staleness check (PRD behavior): if the newest data on
+    # Opportunistic staleness check: if the newest data on
     # disk is older than a week and auto_update is on, enqueue a refresh.
     # Uses a cheap file probe — it must NOT force the dataset to load at
     # boot (lazy-load is the contract; eager_load! is opt-in). Deliberately

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_comment": "Tier B source specification, executed CLIENT-SIDE by OpenASN clients (the Ruby gem's update job). These sources have terms that permit fetching from the original authority but NOT third-party redistribution, or they change too fast for a nightly artifact (Tor exits) - so OpenASN publishes the recipe, never the data (PRD rule: fetch != redistribute). Clients: send a descriptive User-Agent, honor cadence_hours, keep stale data on failure, and skip source ids or parser ids you don't recognize (forward compatibility).",
+  "_comment": "Tier B source specification, executed CLIENT-SIDE by OpenASN clients (the Ruby gem's update job). These sources have terms that permit fetching from the original authority but NOT third-party redistribution, or they change too fast for a nightly artifact (Tor exits) - so OpenASN publishes the recipe, never the data (the fetch-is-not-redistribute rule; see README Legal design). Clients: send a descriptive User-Agent, honor cadence_hours, keep stale data on failure, and skip source ids or parser ids you don't recognize (forward compatibility).",
   "sources": [
     {
       "id": "apple_private_relay",

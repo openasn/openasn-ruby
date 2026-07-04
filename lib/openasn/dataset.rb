@@ -18,7 +18,7 @@ module OpenASN
   #     rebuild their in-memory snapshot from disk.
   class Dataset
     RELOAD_CHECK_INTERVAL = 300 # seconds
-    STALE_AFTER = 7 * 86_400    # boot-time "kick a refresh" threshold (PRD)
+    STALE_AFTER = 7 * 86_400    # boot-time "kick a refresh" threshold (documented in README "Updates")
 
     def initialize(config)
       @config = config
