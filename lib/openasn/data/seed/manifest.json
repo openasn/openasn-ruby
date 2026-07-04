@@ -1,0 +1,99 @@
+{
+  "format_version": 1,
+  "edition": "core",
+  "build_id": "2026-07-04T20:36:12Z",
+  "files": [
+    {
+      "name": "openasn-ipv4.bin",
+      "sha256": "724015a457a90572670290641060330b5a11327867b22486566b54abd630fcb4",
+      "bytes": 6351346,
+      "records": 433579
+    },
+    {
+      "name": "openasn-ipv6.bin",
+      "sha256": "753f2c2ff237ac18a32a24c831622754dfef252c2a301a449d8ad24a8bbd353c",
+      "bytes": 4772984,
+      "records": 125604
+    },
+    {
+      "name": "openasn-orgs.bin",
+      "sha256": "61dc40bd72e7d12a68606e091f818474bfce89054c10da55dd70ae0d5284cf77",
+      "bytes": 4060956,
+      "records": 123392
+    },
+    {
+      "name": "asn-categories.csv",
+      "sha256": "d8ed709f56291bd55af399dbb159aff03776e6930f4bc786d3f0cc211c0ee16b",
+      "bytes": 6362920,
+      "records": 123392
+    },
+    {
+      "name": "fetch-manifest.json",
+      "sha256": "ed77d3ebb4a93c87c7c412b93910793f4f76c28961805e39a5cdd9c12434c31b",
+      "bytes": 6981,
+      "records": 0
+    },
+    {
+      "name": "ATTRIBUTION.md",
+      "sha256": "ba4cd2c03117800e068762d2ebe29bdfdea182e82bb2f6dd2bc310074760afdc",
+      "bytes": 2399,
+      "records": 0
+    }
+  ],
+  "sources": [
+    {
+      "id": "sapics-origin-asn",
+      "url": "https://github.com/sapics/ip-location-db",
+      "license": "PDDL-1.0",
+      "license_sha256": "e8756fd515b673f3e868bf8d9aa5cbbb28d4611366c654e36977ea5279e6551a",
+      "fetched_at": "2026-07-04T20:26:23Z"
+    },
+    {
+      "id": "ipverse-as-metadata",
+      "url": "https://github.com/ipverse/as-metadata",
+      "license": "CC0-1.0",
+      "license_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "fetched_at": "2026-07-04T20:02:11Z"
+    },
+    {
+      "id": "ipverse-as-ip-blocks",
+      "url": "https://github.com/ipverse/as-ip-blocks",
+      "license": "CC0-1.0",
+      "license_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "fetched_at": "2026-07-04T20:36:14Z"
+    },
+    {
+      "id": "x4bnet-lists_vpn",
+      "url": "https://github.com/X4BNet/lists_vpn",
+      "license": "MIT",
+      "license_sha256": "8826b5fbb9d7380264deb636df4adf349eab0e640ca3f2f5481d74cea96ba7a5",
+      "fetched_at": "2026-07-04T20:02:11Z"
+    },
+    {
+      "id": "brianhama-bad-asn-list",
+      "url": "https://github.com/brianhama/bad-asn-list",
+      "license": "MIT",
+      "license_sha256": "67690d0688b2b17b2fb74446e0bf58132a389b2e543d9ba0c4c44a60fedd4e67",
+      "fetched_at": "2026-07-04T20:02:12Z"
+    },
+    {
+      "id": "openasn-overrides",
+      "url": "https://github.com/openasn/openasn",
+      "license": "CC0-1.0",
+      "license_sha256": null,
+      "fetched_at": "2026-07-04T20:36:14Z"
+    }
+  ],
+  "stats": {
+    "layer_counts": {
+      "base_ipv4": 433579,
+      "vpn_ipv4": 6405,
+      "dc_ipv4": 28746,
+      "base_ipv6": 125604
+    },
+    "hosting_asns": 12257,
+    "reference_dc_asns": 899,
+    "reference_coverage": 0.9132
+  },
+  "signature": null
+}

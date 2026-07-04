@@ -1,0 +1,205 @@
+# 🛰️ `openasn` — offline IP origin intelligence for Ruby
+
+[![Gem Version](https://badge.fury.io/rb/openasn.svg)](https://badge.fury.io/rb/openasn) [![Build Status](https://github.com/openasn/ruby/workflows/Tests/badge.svg)](https://github.com/openasn/ruby/actions)
+
+> [!TIP]
+> **🚀 Ship your next Rails app 10x faster!** I've built **[RailsFast](https://railsfast.com/?ref=openasn)**, a production-ready Rails boilerplate template that comes with everything you need to launch a software business in days, not weeks. Go [check it out](https://railsfast.com/?ref=openasn)!
+
+`openasn` tells you what kind of network an IP address is *really* coming from — **residential ISP, mobile carrier, hosting/datacenter, VPN, Tor exit, iCloud Private Relay, enterprise gateway, business, education, government, CGNAT** — entirely offline, in ~20 microseconds, with **zero API calls, zero per-lookup cost, and zero runtime dependencies**.
+
+```ruby
+result = OpenASN.lookup(request.remote_ip)
+
+result.verdict          # => :residential_isp
+result.infrastructure?  # => false  (true only for :hosting / :vpn / :tor_exit)
+result.likely_human?    # => true   (:residential_isp, :mobile, :relay, :cgnat, :enterprise_gateway)
+result.asn              # => 3352
+result.as_org           # => "TELEFONICA DE ESPANA S.A.U."
+result.sources          # => [:asn_category]  — every verdict is auditable
+```
+
+It's the missing first line of defense for signups, checkouts, and abuse-prone endpoints: the signal that today costs $79–$200/month from commercial IP-intelligence APIs, as free, open, auditable data — compiled nightly from legally clean sources by the [OpenASN data project](https://github.com/openasn/openasn), with a data seed bundled right in the gem so it works on first boot, offline.
+
+> [!IMPORTANT]
+> **What this is NOT.** A clean or `:residential_isp` verdict is **absence of evidence, not proof of innocence**. Residential proxies — malicious traffic exiting through real home IPs — are structurally hard to detect offline, and OpenASN does not claim to detect them. `:vpn`, `:hosting`, and `:tor_exit` are high-confidence; treat everything else as a signal, not a sentence. **Never hard-block `:relay`, `:cgnat`, or `:mobile` — those are real people.** OpenASN is a first line of defense, not a fraud engine.
+
+## How it works
+
+```
+┌────────────────────────────┐    nightly     ┌──────────────────────────────┐
+│ openasn/openasn (data)     │ ─────────────▶ │ your server                  │
+│ 560k+ IP ranges, all ASNs, │  GitHub        │  gem seed → daily UpdateJob  │
+│ VPN/DC overlays, curated   │  Releases      │  + Tier B overlays fetched   │
+│ corrections (CC0)          │  (free CDN)    │  from original authorities:  │
+└────────────────────────────┘                │  Apple relay list, Tor exits,│
+                                              │  AWS/GCP/Azure/OCI ranges…   │
+   lookups: local binary search, ~20µs,       └──────────────────────────────┘
+   no user IP ever leaves your server
+```
+
+- **Bundled seed**: the gem ships with a full snapshot — works offline from the first boot, forever.
+- **Nightly refresh**: `OpenASN::UpdateJob` pulls updated artifacts (SHA-256 verified, atomically swapped — readers never block, never see partial data).
+- **Tier B overlays**: fast-moving lists (Tor exits change hourly; Apple publishes Private Relay egress for recognition) are fetched by *your* server directly from the original authorities — never proxied through anyone.
+- **Data never flows through gem releases.** The gem versions on code; the data has its own nightly release channel.
+
+## Installation
+
+```ruby
+# Gemfile
+gem "openasn"
+```
+
+Then:
+
+```bash
+bundle install
+rails generate openasn:install
+```
+
+The generator creates `config/initializers/openasn.rb` (documented defaults) and, if you're on Solid Queue, schedules the daily `OpenASN::UpdateJob` in `config/recurring.yml`. **No migrations, no database** — data lives in `storage/openasn/` as memory-mapped-style packed files.
+
+Not on Rails? `OpenASN.lookup` works anywhere Ruby ≥ 3.1 runs; schedule `OpenASN.update!` daily with cron/whenever.
+
+## The API
+
+### Lookup
+
+```ruby
+r = OpenASN.lookup("146.70.107.100")   # aliases: OpenASN.check, OpenASN.[]
+# Never nil. Raises OpenASN::InvalidIPError (an ArgumentError) on garbage input.
+
+r.verdict         # one of: :residential_isp :mobile :business :hosting :vpn
+                  #         :tor_exit :relay :enterprise_gateway :education
+                  #         :government :cgnat :private :unknown
+r.infrastructure? # :hosting | :vpn | :tor_exit — the honest, high-confidence boolean
+r.likely_human?   # :residential_isp | :mobile | :relay | :cgnat | :enterprise_gateway
+r.vpn? r.hosting? r.tor? r.relay? r.mobile? r.private? r.cgnat?
+
+r.asn             # 9009
+r.as_org          # "M247 Europe SRL"  (nil until the first data refresh downloads org names)
+r.category        # "hosting"          (raw upstream category)
+r.network_role    # "major_transit"    (raw upstream routing role)
+r.provider        # "aws" | "ProtonVPN" | "iCloud Private Relay" | nil (overlay attribution)
+r.sources         # [:x4b_vpn] — which data layer decided; every verdict is auditable
+r.context_flags   # [:cloudflare_range] — context that never decides verdicts
+r.unrouted?       # true when no ASN announces this IP
+r.flags           # raw u16 for power users (see the data project's FORMAT.md)
+r.to_h            # everything, stable keys — built for shadow-mode logging
+```
+
+Note the deliberate asymmetry: `:business`, `:education`, `:government`, and `:unknown` are **neither** `infrastructure?` **nor** `likely_human?` — that's your call, not the gem's. There is intentionally no `suspicious?` — that's a policy word, and your app owns policy.
+
+### Verdict cheat sheet
+
+| Verdict | Meaning | Confidence | Advice |
+|---|---|---|---|
+| `:hosting` | datacenter/cloud/colo | high | fine to challenge on sensitive flows |
+| `:vpn` | known VPN egress | high | challenge > block (privacy users are customers too) |
+| `:tor_exit` | Tor exit node | high (with Tier B fresh) | your policy |
+| `:relay` | iCloud Private Relay | high | **treat like CGNAT — real paying humans** (Apple says the same) |
+| `:enterprise_gateway` | Zscaler-style corporate egress | high | humans at work; never block |
+| `:residential_isp` | eyeball ISP | *absence of evidence* | trust but verify |
+| `:mobile` | cellular carrier | high | one IP = hundreds of humans (CGNAT); no per-IP rate-limits |
+| `:cgnat` / `:private` | RFC 6598 / RFC 1918 space | certain | check your proxy config if you see these on public traffic |
+| `:business` / `:education` / `:government` | org category from ASN data | medium | your policy |
+| `:unknown` | genuinely ambiguous (e.g. tier-1 backbone, uncategorized ASN) | honest | design for it — `unknown` is a feature, not a bug |
+
+### Configuration (all optional)
+
+```ruby
+OpenASN.configure do |config|
+  config.data_dir     = Rails.root.join("storage", "openasn") # default; use a persistent volume in containers
+  config.memory_mode  = :packed   # :packed ~11MB data resident, ~15µs/lookup · :arrays faster, more RAM
+  config.auto_update  = true
+  config.release_url  = "https://github.com/openasn/openasn/releases/latest/download/" # self-hostable
+  config.pin_version  = nil       # e.g. "2026-07-04" to pin a dated data release
+  config.tier_b       = { apple_relay: true, tor: true, clouds: true,
+                          vpn_providers: true, zscaler: false, nazgul_mixed: false }
+  config.logger       = Rails.logger
+end
+```
+
+### Updates
+
+```ruby
+OpenASN.update!        # refresh now → :updated | :tier_b_only | :unchanged | :locked
+OpenASN.dataset_info   # build id, origin (:seed/:data_dir), record counts, per-source Tier B status
+OpenASN.eager_load!    # load at boot instead of first lookup (~50–200ms once per process)
+```
+
+Updates are atomic end to end: SHA-256 verified against the release manifest → written to temp files → `rename(2)` into place → in-memory snapshot swapped in a single assignment. Concurrent lookups never block and never see partial state; concurrent updaters (multi-worker Puma) coordinate via file lock; sibling processes pick up new data within ~5 minutes via a one-`stat()` freshness probe. Every Tier B source failure keeps last-good data and surfaces in `dataset_info` — a broken upstream can never crash your app or silently blank a signal.
+
+### Rack middleware (optional)
+
+```ruby
+# config/initializers/openasn.rb
+Rails.application.config.middleware.use OpenASN::Middleware
+
+# anywhere downstream:
+request.env["openasn.result"]&.infrastructure?
+```
+
+> [!WARNING]
+> **The classic integration bug:** behind a proxy/CDN without trusted-proxy configuration, you'll classify your own load balancer on every request (everything comes back `:private` or your host's datacenter). Inside Rails the middleware uses `remote_ip` semantics (honors `config.action_dispatch.trusted_proxies`); make sure the real client IP reaches your app — e.g. with the `cloudflare-rails` gem when behind Cloudflare.
+
+## Recommended rollout: shadow mode first
+
+Log for two weeks. Then decide. (This is how we dogfood it.)
+
+```ruby
+# 1. SHADOW — measure, block nothing:
+class RegistrationsController < ApplicationController
+  def create
+    Rails.logger.info(openasn: OpenASN.lookup(request.remote_ip).to_h.merge(flow: "signup"))
+    # … existing signup logic unchanged
+  end
+end
+
+# 2. Weeks later, with YOUR false-positive data in hand, act — prefer
+#    step-up verification (email confirm, captcha, phone) over hard blocks:
+Rack::Attack.blocklist("openasn: infrastructure on signup") do |req|
+  req.post? && req.path == "/signup" && OpenASN.lookup(req.ip).infrastructure?
+end
+```
+
+**Who should NOT rely on this:** banks, crypto exchanges, KYC flows, high-chargeback marketplaces — you need paid behavioral intelligence (MaxMind Anonymous IP/Residential Proxy, IPQS…). OpenASN is your prefilter at most.
+
+## What you can and cannot conclude (honesty section)
+
+**Can:** recognize known infrastructure with high confidence; identify network type; explain every verdict (`sources`); do it all offline with zero latency budget and zero privacy leakage (user IPs never leave your server).
+
+**Cannot:** detect residential proxies (structurally invisible offline — that's why the paid products exist); prove any IP is safe; outrun VPN infrastructure churn beyond nightly + Tier B cadence; promise IPv6 range-overlay parity (v6 VPN signal rides ASN-level data; documented lower confidence).
+
+## Performance
+
+Measured on the bundled real dataset (433k+ IPv4 ranges, 125k+ IPv6, full overlays), pure Ruby, no C extensions:
+
+| mode | lookup | throughput | memory |
+|---|---|---|---|
+| `:packed` (default) | ~15µs | ~68k/sec/core | ~11MB data |
+| `:arrays` | ~9µs | ~108k/sec/core | ~40MB data |
+
+Run `rake bench` to measure on your hardware.
+
+## Data provenance & licensing
+
+Every byte in the dataset is traceable: compiled nightly from PDDL/CC0/MIT-licensed sources ([sapics/ip-location-db](https://github.com/sapics/ip-location-db), [ipverse/as-metadata](https://github.com/ipverse/as-metadata), [X4BNet/lists_vpn](https://github.com/X4BNet/lists_vpn), [brianhama/bad-asn-list](https://github.com/brianhama/bad-asn-list)) plus OpenASN's own curated corrections — with upstream license texts SHA-256-pinned in CI and full per-build provenance in `manifest.json`. The dataset is CC0. The details, gates, and the "fetch ≠ redistribute" legal design live in the [data project README](https://github.com/openasn/openasn).
+
+Sibling of [`nondisposable`](https://github.com/rameerez/nondisposable) (disposable-email blocking) and [`trackdown`](https://github.com/rameerez/trackdown) (IP geolocation) — same philosophy: boring, offline, production-grade primitives for Rails apps.
+
+## Development
+
+```bash
+bundle install
+bundle exec rake test    # full suite, offline (WebMock)
+rake bench               # lookup latency on your machine
+rake seed:refresh        # pull the latest data release into lib/openasn/data/seed/
+```
+
+## Contributing
+
+Bug reports and pull requests are welcome on GitHub at https://github.com/openasn/ruby. Wrong verdict for an IP? That's usually a *data* issue — check `result.sources` and open it against [openasn/openasn](https://github.com/openasn/openasn) (the override files are one sourced line per PR).
+
+## License
+
+The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).

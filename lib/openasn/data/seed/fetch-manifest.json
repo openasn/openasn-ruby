@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "_comment": "Tier B source specification, executed CLIENT-SIDE by OpenASN clients (the Ruby gem's update job). These sources have terms that permit fetching from the original authority but NOT third-party redistribution, or they change too fast for a nightly artifact (Tor exits) - so OpenASN publishes the recipe, never the data (PRD rule: fetch != redistribute). Clients: send a descriptive User-Agent, honor cadence_hours, keep stale data on failure, and skip source ids or parser ids you don't recognize (forward compatibility).",
+  "sources": [
+    {
+      "id": "apple_private_relay",
+      "url": "https://mask-api.icloud.com/egress-ip-ranges.csv",
+      "parser": "csv_cidr_first_column",
+      "maps_to": "relay",
+      "provider": "iCloud Private Relay",
+      "cadence_hours": 24,
+      "aggregate_cidrs": true,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "~280k rows; MUST aggregate (merges to a few tens of thousands of ranges). Apple posts this list publicly for recognition and says to treat Private Relay like carrier-grade NAT: recognize, don't block (https://developer.apple.com/icloud/prepare-your-network-for-icloud-private-relay/). Egress IPs live inside Cloudflare/Akamai space - relay MUST outrank hosting in client precedence."
+    },
+    {
+      "id": "tor_exits",
+      "url": "https://check.torproject.org/torbulkexitlist",
+      "parser": "plain_ip_per_line",
+      "maps_to": "tor_exit",
+      "provider": "Tor",
+      "cadence_hours": 12,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "Official Tor Project bulk exit list. Do NOT substitute dan.me.uk (bans fetchers for 30 min on over-fetch)."
+    },
+    {
+      "id": "aws",
+      "url": "https://ip-ranges.amazonaws.com/ip-ranges.json",
+      "parser": "aws_json",
+      "maps_to": "hosting",
+      "provider": "aws",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "Official. Parse prefixes[].ip_prefix and ipv6_prefixes[].ipv6_prefix."
+    },
+    {
+      "id": "gcp",
+      "url": "https://www.gstatic.com/ipranges/cloud.json",
+      "parser": "gcp_json",
+      "maps_to": "hosting",
+      "provider": "gcp",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "Customer ranges. goog.json (Google-owned infra) is deliberately not fetched: as-metadata already categorizes Google ASNs as hosting."
+    },
+    {
+      "id": "azure",
+      "resolver": "azure_download_page",
+      "page_url": "https://www.microsoft.com/en-us/download/details.aspx?id=56519",
+      "parser": "azure_servicetags_json",
+      "maps_to": "hosting",
+      "provider": "azure",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "The actual ServiceTags_Public_YYYYMMDD.json URL rotates weekly behind the download page; clients must scrape the page for the current link and keep stale data when the scrape breaks."
+    },
+    {
+      "id": "oracle",
+      "url": "https://docs.oracle.com/en-us/iaas/tools/public_ip_ranges.json",
+      "parser": "oci_json",
+      "maps_to": "hosting",
+      "provider": "oracle",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "Official OCI ranges: regions[].cidrs[].cidr."
+    },
+    {
+      "id": "digitalocean",
+      "url": "https://digitalocean.com/geo/google.csv",
+      "parser": "geofeed_csv",
+      "maps_to": "hosting",
+      "provider": "digitalocean",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "RFC 8805-style geofeed CSV; first column is the CIDR."
+    },
+    {
+      "id": "linode",
+      "url": "https://geoip.linode.com/",
+      "parser": "geofeed_csv",
+      "maps_to": "hosting",
+      "provider": "linode",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "RFC 8805 geofeed."
+    },
+    {
+      "id": "vultr",
+      "url": "https://geofeed.constant.com/",
+      "parser": "geofeed_csv",
+      "maps_to": "hosting",
+      "provider": "vultr",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "RFC 8805 geofeed (Constant = Vultr)."
+    },
+    {
+      "id": "cloudflare_ranges",
+      "url": "https://www.cloudflare.com/ips-v4",
+      "url_ipv6": "https://www.cloudflare.com/ips-v6",
+      "parser": "plain_cidr_per_line",
+      "maps_to": "flag:cloudflare_range",
+      "provider": "cloudflare",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "CONTEXT FLAG ONLY - never map to a blocking verdict. WARP and iCloud Private Relay egress live inside these ranges (that's why X4B excludes them from its dc list). Docs: https://developers.cloudflare.com/fundamentals/concepts/cloudflare-ip-addresses/"
+    },
+    {
+      "id": "protonvpn",
+      "url": "https://raw.githubusercontent.com/tn3w/ProtonVPN-IPs/master/protonvpn_ips.txt",
+      "parser": "plain_ip_per_line",
+      "maps_to": "vpn",
+      "provider": "ProtonVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "license": "Apache-2.0",
+      "notes": "Exit IPs scraped from ProtonVPN's own API by tn3w/ProtonVPN-IPs (LICENSE verified Apache-2.0, default branch master). Exit IPs are the classification-relevant set for inbound traffic. Sibling repos (Windscribe-IPs, TunnelBear-IPs) NOT enabled: licenses unverified as of 2026-07-04 - verify each LICENSE before adding."
+    },
+    {
+      "id": "zscaler",
+      "url": "https://config.zscaler.com/api/zscaler.net/cenr/json",
+      "parser": "zscaler_json",
+      "maps_to": "enterprise_gateway",
+      "provider": "zscaler",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Cloud Enforcement Node Ranges, published for allowlisting (verified live 2026-07-04: nested JSON, collect every 'range' value, both v4 and v6). Off by default: the ASN-level enterprise_gateway overrides already cover Zscaler; enable for finer range-level coverage."
+    },
+    {
+      "id": "nazgul_mixed",
+      "url": "https://raw.githubusercontent.com/NazgulCoder/IPLists/main/output/vpn-ipv4.txt",
+      "url_ipv6": "https://raw.githubusercontent.com/NazgulCoder/IPLists/main/output/vpn-ipv6.txt",
+      "parser": "plain_cidr_per_line",
+      "maps_to": "flag:mixed_high_risk",
+      "provider": "nazgul",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "license": "MIT",
+      "notes": "SEMANTIC WARNING (from their own README): includes ASNs of providers 'permissive toward pentesting, DDoS, bot operations' - broader than VPN. Never map to :vpn; exposed only as a flag. Off by default. Interim IPv6 VPN-ish signal for those who opt in."
+    }
+  ]
+}
