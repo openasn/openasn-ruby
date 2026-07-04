@@ -13,7 +13,7 @@ group :development do
 end
 
 group :development, :test do
-  gem "minitest", "~> 6.0"
+  gem "minitest", ">= 5.25", "< 7" # 6.x needs Ruby >= 3.2; 5.x keeps the 3.1 CI lane alive
   gem "minitest-reporters", "~> 1.6"
   gem "mocha", "~> 2.0"
   gem "ostruct"
