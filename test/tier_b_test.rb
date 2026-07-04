@@ -134,6 +134,27 @@ class TierBExecutorTest < Minitest::Test
     assert_requested(stub, times: 1)
   end
 
+  def test_not_modified_is_clean_keep_current_not_failure
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "apple_private_relay", url: APPLE,
+                  parser: "csv_cidr_first_column", maps_to: "relay",
+                  provider: "iCloud Private Relay", cadence_hours: 0 }]
+    }))
+    stub_request(:get, APPLE).to_return(status: 200, body: "1.0.30.0/24,US,,\n",
+                                        headers: { "ETag" => '"apple-1"' })
+    assert execute(force: false)
+
+    stub_request(:get, APPLE)
+      .with(headers: { "If-None-Match" => '"apple-1"' })
+      .to_return(status: 304)
+    refute execute(force: false)
+
+    state = OpenASN::OverlayStore.new(@test_data_dir).source_state("apple_private_relay")
+    assert_nil state["last_error"]
+    assert_equal :relay, OpenASN.lookup("1.0.30.10").verdict
+  end
+
   def test_unknown_parser_is_skipped_gracefully
     File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
       schema_version: 1,

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
+require "digest"
 
 class DatasetTest < Minitest::Test
   def test_falls_back_to_bundled_seed_when_data_dir_empty
@@ -14,6 +15,23 @@ class DatasetTest < Minitest::Test
     File.binwrite(File.join(@test_data_dir, "openasn-ipv4.bin"), "GARBAGE")
     File.binwrite(File.join(@test_data_dir, "openasn-ipv6.bin"), "GARBAGE")
     r = OpenASN.lookup("8.8.8.8") # must not raise
+    assert_equal :hosting, r.verdict
+    assert_equal :seed, OpenASN.dataset_info[:origin]
+  end
+
+  def test_manifest_checksum_mismatch_falls_back_to_seed
+    FixtureData.install_canonical(@test_data_dir)
+    File.write(File.join(@test_data_dir, "manifest.json"), JSON.generate({
+      format_version: 1,
+      edition: "core",
+      build_id: Time.at(FixtureData::BUILD_TS).utc.iso8601,
+      files: [
+        { name: "openasn-ipv4.bin", sha256: "0" * 64 },
+        { name: "openasn-ipv6.bin", sha256: Digest::SHA256.file(File.join(@test_data_dir, "openasn-ipv6.bin")).hexdigest }
+      ]
+    }))
+
+    r = OpenASN.lookup("8.8.8.8")
     assert_equal :hosting, r.verdict
     assert_equal :seed, OpenASN.dataset_info[:origin]
   end

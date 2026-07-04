@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "digest"
 require "json"
 
 module OpenASN
@@ -68,7 +69,28 @@ module OpenASN
       return nil unless File.exist?(v4) && File.exist?(v6)
 
       manifest = File.exist?(mf) ? JSON.parse(File.read(mf)) : {}
+      verify_manifest_hashes!(manifest, "openasn-ipv4.bin" => v4, "openasn-ipv6.bin" => v6)
       [File.binread(v4), File.binread(v6), manifest]
+    end
+
+    def self.verify_manifest_hashes!(manifest, files)
+      by_name = (manifest["files"] || []).to_h { |f| [f["name"], f] }
+      return if by_name.empty? # legacy/manual installs without checksums still parse through FORMAT.md.
+
+      files.each do |name, path|
+        expected = by_name.dig(name, "sha256")
+        raise IntegrityError, "manifest missing checksum for #{name}" if expected.to_s.empty?
+
+        actual = Digest::SHA256.file(path).hexdigest
+        next if actual == expected
+
+        # Updater writes manifest.json last as the commit marker. If a
+        # process dies during the final rename loop, a fresh boot can see
+        # new artifact bytes next to the old manifest. Reject that mixed
+        # set here and fall back to the bundled seed instead of serving a
+        # cross-build IPv4/IPv6 pair.
+        raise IntegrityError, "#{name} checksum does not match manifest"
+      end
     end
 
     def self.load_orgs(data_dir, config)

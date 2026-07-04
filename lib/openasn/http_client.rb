@@ -52,7 +52,11 @@ module OpenASN
       http.read_timeout = READ_TIMEOUT
 
       response = http.request(Net::HTTP::Get.new(uri, headers))
-      if response.is_a?(Net::HTTPRedirection)
+      # Ruby models 304 Not Modified as a 3xx response, but it is not a
+      # redirect and correctly has no Location header. Return it to #get so
+      # conditional GETs are clean :not_modified events instead of noisy
+      # keep-stale failures.
+      if response.is_a?(Net::HTTPRedirection) && !response.is_a?(Net::HTTPNotModified)
         location = response["location"]
         raise UpdateError, "redirect without Location from #{url}" if location.nil?
 
