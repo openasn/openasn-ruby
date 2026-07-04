@@ -6,6 +6,14 @@ module OpenASN
   # Verdict-first design: `verdict` is the closed enum; the predicates are
   # sugar. There is deliberately NO `suspicious?` — that's a policy word,
   # and drawing that line belongs to your application, not this gem.
+  #
+  # STABILITY CONTRACT (README "API stability contract" is the canonical
+  # text; keep in sync): VERDICTS is append-only — never remove, rename,
+  # or redefine an entry; additions land in minor versions with a loud
+  # CHANGELOG note. Verdicts are compiled code, never data: a data refresh
+  # cannot introduce one. to_h keys are append-only. The same contract
+  # binds every future client (openasn-js, …) — the enum is the project's
+  # cross-language API, defined in the data repo's DECISIONS.md.
   class Result
     VERDICTS = %i[
       residential_isp mobile business hosting vpn tor_exit relay

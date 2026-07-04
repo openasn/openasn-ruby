@@ -104,6 +104,16 @@ Note the deliberate asymmetry: `:business`, `:education`, `:government`, and `:u
 | `:business` / `:education` / `:government` | org category from ASN data | medium | your policy |
 | `:unknown` | genuinely ambiguous (e.g. tier-1 backbone, uncategorized ASN) | honest | design for it — `unknown` is a feature, not a bug |
 
+### API stability contract
+
+Your `case result.verdict` statements and shadow-log parsers are API surface. The rules, from 0.1.0 onward:
+
+- **The verdict enum is append-only.** Existing verdicts are never removed, renamed, or silently redefined (a meaning change would be a major version). New verdicts may be *added* in a minor version, announced loudly in the CHANGELOG — so give exhaustive `case` statements an `else` branch (treat unknown-to-you verdicts as you treat `:unknown`).
+- **Verdicts are code, not data: a data refresh can never emit a verdict your gem version doesn't know.** The nightly artifacts carry ranges and flag bits; the mapping to verdicts is compiled into the client. Data updates are always safe to auto-apply.
+- **`Result#to_h` keys are append-only** — shadow-mode logs you write today stay parseable tomorrow.
+- **`sources` and `context_flags` symbols are informational**: new ones appear as data sources evolve. Log them, display them, never exhaustively match on them.
+- **Config keys are additive**; artifact bytes are governed by the data project's [FORMAT.md](https://github.com/openasn/openasn/blob/main/FORMAT.md) (any layout change bumps `format_version`, and readers reject unknown versions rather than guess).
+
 ### Configuration (all optional)
 
 ```ruby
