@@ -4,7 +4,7 @@ require "test_helper"
 require "digest"
 
 class UpdaterTest < Minitest::Test
-  RELEASE = "https://github.com/openasn/openasn/releases/latest/download/"
+  RELEASE = "https://github.com/openasn/openasn/releases/download/latest/" # must mirror Configuration#release_url default (tag-addressed)
 
   def setup
     super
@@ -139,5 +139,17 @@ class UpdaterTest < Minitest::Test
     stub = stub_request(:get, "#{pinned}manifest.json").to_return(status: 500)
     OpenASN.update!
     assert_requested(stub)
+  end
+
+  def test_default_release_url_is_tag_addressed_not_badge_addressed
+    # `releases/download/latest/` (tag) vs `releases/latest/download/`
+    # (GitHub's "Latest" badge = most recently created release). The badge
+    # form served a frozen weekly snapshot once (2026-07-05, see data repo
+    # DECISIONS.md D-REL-1) - this pins the default so nobody swaps the two
+    # visually-identical shapes back. RELEASE above must mirror the default,
+    # or every stub in this file silently stops covering the real URL.
+    assert_equal RELEASE, OpenASN.configuration.release_url
+    assert_includes RELEASE, "/releases/download/latest/"
+    refute_includes RELEASE, "/releases/latest/download/"
   end
 end

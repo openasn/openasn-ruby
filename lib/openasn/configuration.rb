@@ -125,7 +125,18 @@ module OpenASN
       return @release_url if @release_url
       return "https://github.com/openasn/openasn/releases/download/#{pin_version}/" if pin_version
 
-      "https://github.com/openasn/openasn/releases/latest/download/"
+      # Tag-addressed form: the rolling release's TAG is literally "latest",
+      # so this path stays pinned to it no matter which release holds
+      # GitHub's "Latest" BADGE. The superficially equivalent
+      # `releases/latest/download/...` resolves via that badge (whatever
+      # release was created last - REST `make_latest` defaults to "true"),
+      # and the first weekly dated snapshot stole it once (2026-07-05):
+      # default-config clients would have silently fetched up-to-6-day-old
+      # data until the next snapshot. Do not "simplify" this back.
+      # Refs: https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases
+      #       https://docs.github.com/en/rest/releases/releases#create-a-release
+      #       data repo DECISIONS.md D-REL-1
+      "https://github.com/openasn/openasn/releases/download/latest/"
     end
 
     def logger

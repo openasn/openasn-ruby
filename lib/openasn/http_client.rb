@@ -14,7 +14,7 @@ module OpenASN
   #   egress is allowlisted, those hosts must be on the list too.
   # * Supports conditional GET via ETag (returns :not_modified).
   # * Never talks to api.github.com (60 req/hr unauthenticated limit);
-  #   releases/latest/download/ URLs redirect fine without auth.
+  #   releases/download/<tag>/ asset URLs redirect fine without auth.
   class HttpClient
     MAX_REDIRECTS = 5
     OPEN_TIMEOUT = 10

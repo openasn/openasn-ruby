@@ -144,7 +144,7 @@ OpenASN.configure do |config|
   config.data_dir     = Rails.root.join("storage", "openasn") # default; use a persistent volume in containers
   config.memory_mode  = :packed   # :packed ~11MB data resident, ~15µs/lookup · :arrays faster, more RAM
   config.auto_update  = true
-  config.release_url  = "https://github.com/openasn/openasn/releases/latest/download/" # self-hostable
+  config.release_url  = "https://github.com/openasn/openasn/releases/download/latest/" # self-hostable; tag-addressed on purpose (badge-immune, see data repo DECISIONS.md D-REL-1)
   config.pin_version  = nil       # e.g. "2026-07-04" to pin a dated data release
   config.tier_b       = { apple_relay: true, tor: true, clouds: true,
                           vpn_providers: true, vpn_heavy: false,

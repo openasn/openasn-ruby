@@ -13,7 +13,7 @@ desc "Refresh the bundled data seed from the latest OpenASN release (run before 
 task "seed:refresh" do
   require "open-uri"
   require "fileutils"
-  base = ENV.fetch("OPENASN_RELEASE_URL", "https://github.com/openasn/openasn/releases/latest/download/")
+  base = ENV.fetch("OPENASN_RELEASE_URL", "https://github.com/openasn/openasn/releases/download/latest/") # tag-addressed, badge-immune: see Configuration#release_url
   seed = File.expand_path("lib/openasn/data/seed", __dir__)
   FileUtils.mkdir_p(seed)
   %w[openasn-ipv4.bin openasn-ipv6.bin manifest.json fetch-manifest.json].each do |f|
