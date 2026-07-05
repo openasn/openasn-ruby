@@ -313,8 +313,51 @@ module OpenASN
       tokens.uniq
     end
 
+    register "worldvpn_servers_html" do |body|
+      # WorldVPN's public server table gives exact IPs next to
+      # *.ocservvpn.com hostnames. Keep this parser table-shaped instead of
+      # doing a whole-page IP scrape; WordPress/CSS assets can contain
+      # version-looking strings that must not become VPN evidence.
+      tokens = body.scan(/<tr\b.*?<\/tr>/mi).filter_map do |row|
+        cells = row.scan(/<td\b[^>]*>(.*?)<\/td>/mi).flatten.map { |cell| strip_html(cell) }
+        ip = cells[1].to_s
+        host = cells[2].to_s.downcase
+        next unless ip.match?(/\A(?:\d{1,3}\.){3}\d{1,3}\z/) && host.match?(/\A[a-z]{2}\d+\.ocservvpn\.com\z/)
+
+        ip
+      end
+      raise ParseError, "worldvpn_servers_html: no server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "freevpn_us_status_html" do |body|
+      allowed = {
+        "openvpn" => /\Aovpn-[a-z0-9-]+\.vpnv\.cc\z/i,
+        "wireguard" => /\Awireguard-[a-z0-9-]+\.vpnv\.cc\z/i,
+        "pptp" => /\Apptp-[a-z0-9-]+\.vpnv\.cc\z/i
+      }
+
+      tokens = body.scan(/<tr\b[^>]*>/i).filter_map do |tag|
+        type = tag[/\bdata-type=["']([^"']+)["']/i, 1].to_s.downcase
+        host = tag[/\bdata-host=["']([^"']+)["']/i, 1].to_s.downcase
+        pattern = allowed[type]
+        host if pattern && host.match?(pattern)
+      end
+      raise ParseError, "freevpn_us_status_html: no VPN hosts — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
     class << self
       private
+
+      def strip_html(fragment)
+        fragment.gsub(/<[^>]+>/, " ")
+                .gsub(/&nbsp;|&#160;/i, " ")
+                .gsub(/\s+/, " ")
+                .strip
+      end
 
       def openvpn_remote_hosts(content)
         content.each_line.filter_map do |line|

@@ -35,13 +35,13 @@ module OpenASN
     #   clouds         → aws gcp azure oracle digitalocean linode vultr
     #                    + cloudflare_ranges context flag
     #   vpn_providers  → protonvpn mullvad ivpn pia airvpn windscribe
-    #                    privado riseup wlvpn
+    #                    privado riseup wlvpn worldvpn
     #                    (exact provider-attributed VPN exit/server IPs)
     #   vpn_heavy      → nordvpn                    (large/fragile provider API)
     #   vpn_dns        → surfshark ipvanish privatevpn purevpn torguard fastestvpn vpnsecure
     #                    tunnelbear strongvpn
     #                    (provider hostnames resolved locally; opt-in)
-    #   public_relays  → vpngate vpnbook            (volunteer/free public VPN relays)
+    #   public_relays  → vpngate vpnbook freevpn.us (volunteer/free public VPN relays)
     #   zscaler        → zscaler                    (:enterprise_gateway ranges)
     #   nazgul_mixed   → nazgul_mixed               (flag only, never :vpn)
     attr_accessor :tier_b
@@ -86,12 +86,12 @@ module OpenASN
       clouds: %w[aws gcp azure oracle digitalocean linode vultr cloudflare_ranges],
       zscaler: %w[zscaler],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
-                        privadovpn riseup_vpn wlvpn_server_list],
+                        privadovpn riseup_vpn wlvpn_server_list worldvpn_servers],
       vpn_heavy: %w[nordvpn_servers],
       vpn_dns: %w[surfshark_generic surfshark_static surfshark_obfuscated ipvanish_openvpn
                   privatevpn_openvpn purevpn_openvpn torguard_openvpn_tcp torguard_openvpn_udp
                   fastestvpn_tcp fastestvpn_udp vpnsecure_locations tunnelbear_openvpn strongvpn_locations],
-      public_relays: %w[vpngate vpnbook_openvpn],
+      public_relays: %w[vpngate vpnbook_openvpn freevpn_us_servers],
       nazgul_mixed: %w[nazgul_mixed]
     }.freeze
 

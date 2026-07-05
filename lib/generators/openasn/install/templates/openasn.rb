@@ -29,7 +29,7 @@ OpenASN.configure do |config|
   #   vpn_providers: true,   # exact VPN provider/backend IP lists → :vpn (+provider)
   #   vpn_heavy: false,      # large/fragile provider APIs (NordVPN) — opt-in
   #   vpn_dns: false,        # provider hostnames resolved locally (Surfshark/IPVanish/FastestVPN/VPNSecure/TunnelBear/StrongVPN/...) - opt-in
-  #   public_relays: false,  # volunteer/free public VPN relays (VPN Gate/VPNBook) — opt-in
+  #   public_relays: false,  # volunteer/free public VPN relays (VPN Gate/VPNBook/FreeVPN.us) — opt-in
   #   zscaler: false,        # extra :enterprise_gateway ranges (ASN flags already cover most)
   #   nazgul_mixed: false    # broad "high-risk hosting" flag — NOT a VPN signal; opt-in
   # }

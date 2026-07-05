@@ -175,6 +175,37 @@ class ParsersTest < Minitest::Test
     assert_equal ["au1.isponeder.com"], P.parse("vpnsecure_locations_html", body)
   end
 
+  def test_worldvpn_servers_html
+    body = <<~HTML
+      <span>theme version 7.3.0.1 is not a server</span>
+      <table>
+        <tr>
+          <td>Germany S1</td>
+          <td>116.203.253.222</td>
+          <td>de1.ocservvpn.com</td>
+        </tr>
+        <tr>
+          <td>Noise</td>
+          <td>203.0.113.99</td>
+          <td>example.com</td>
+        </tr>
+      </table>
+    HTML
+    assert_equal ["116.203.253.222"], P.parse("worldvpn_servers_html", body)
+  end
+
+  def test_freevpn_us_status_html
+    body = <<~HTML
+      <tr data-type="openvpn" data-host="ovpn-ee-1.vpnv.cc"></tr>
+      <tr data-type="wireguard" data-host="wireguard-us-2.vpnv.cc"></tr>
+      <tr data-type="pptp" data-host="pptp-fr-1.vpnv.cc"></tr>
+      <tr data-type="ssh" data-host="ssh-us-1.vpnv.cc"></tr>
+      <tr data-type="v2ray" data-host="v2ray-fr-1.vpnv.cc"></tr>
+    HTML
+    assert_equal ["ovpn-ee-1.vpnv.cc", "wireguard-us-2.vpnv.cc", "pptp-fr-1.vpnv.cc"],
+                 P.parse("freevpn_us_status_html", body)
+  end
+
   def test_wlvpn_server_list_xml
     body = <<~XML
       <wlvpnserverList>

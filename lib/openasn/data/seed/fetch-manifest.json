@@ -227,6 +227,17 @@
       "notes": "First-party WLVPN/IPVanish white-label server API. WLVPN's site says it is a white-label VPN solution powered by IPVanish and part of VIPRE Security Group, a Ziff Davis company (https://wlvpn.com/about-wlvpn/). Parser keeps only server elements with visible=1/status=1 and reads exact ip attributes. Provider attribution is intentionally WLVPN backend infrastructure, not a reseller brand such as Spaceship/FastVPN or Namecheap FastVPN."
     },
     {
+      "id": "worldvpn_servers",
+      "url": "https://worldvpn.net/servers",
+      "parser": "worldvpn_servers_html",
+      "maps_to": "vpn",
+      "provider": "WorldVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party WorldVPN public server table. The page publishes exact IPs beside *.ocservvpn.com hostnames and says all listed servers support multiple VPN protocols, with OpenVPN profiles linked per row. Parser reads only table rows whose host cell is *.ocservvpn.com and emits the exact IP cell; no DNS expansion or whole-page IP scraping."
+    },
+    {
       "id": "surfshark_generic",
       "url": "https://api.surfshark.com/v4/server/clusters/generic",
       "parser": "surfshark_clusters_json",
@@ -399,6 +410,18 @@
       "enabled_default": false,
       "resolve_hostnames": true,
       "notes": "Opt-in public/free VPN source: VPNBook publishes current OpenVPN server hostnames on this page; clients resolve them locally. Keep behind config.tier_b[:public_relays] because free public VPN endpoints are high-churn."
+    },
+    {
+      "id": "freevpn_us_servers",
+      "url": "https://www.freevpn.us/pages/server-status.html",
+      "parser": "freevpn_us_status_html",
+      "maps_to": "vpn",
+      "provider": "FreeVPN.us",
+      "cadence_hours": 6,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "notes": "Opt-in public/free VPN source: FreeVPN.us (Roosterkid) publishes a live status table with data-type/data-host attributes. Parser keeps only OpenVPN, WireGuard, and PPTP/L2TP VPN rows and intentionally excludes SSH Tunnel and V2Ray rows from the VPN overlay. Clients resolve *.vpnv.cc locally; keep behind config.tier_b[:public_relays] because free public endpoints are high-churn."
     },
     {
       "id": "vpngate",
