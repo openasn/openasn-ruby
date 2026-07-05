@@ -89,6 +89,29 @@ r.to_h            # everything, stable keys — built for shadow-mode logging
 
 Note the deliberate asymmetry: `:business`, `:education`, `:government`, and `:unknown` are **neither** `infrastructure?` **nor** `likely_human?` — that's your call, not the gem's. There is intentionally no `suspicious?` — that's a policy word, and your app owns policy.
 
+### The mental model: verdict, category, flags, sources
+
+OpenASN returns one object, but its fields answer different questions:
+
+| Field | What it answers | How to use it |
+|---|---|---|
+| `verdict` | "What should my app consider this IP?" | Primary policy input. Switch on this. |
+| `infrastructure?` | "Is this high-confidence non-eyeball infrastructure?" | Safe shorthand for `:hosting`, `:vpn`, `:tor_exit`. |
+| `likely_human?` | "Is blocking this IP likely to hit real people?" | True for residential/mobile/relay/CGNAT/enterprise gateways. |
+| `category` | Raw ASN category from upstream data (`"isp"`, `"hosting"`, `"business"`, ...) | Context for logs and analyst UI. Do not treat it as the verdict. |
+| `network_role` | Raw routing role (`"access_provider"`, `"midsize_transit"`, `"tier1_transit"`, ...) | Explains why some ISP ASNs stay human while pure backbones stay unknown. |
+| `sources` | Which rule/data layer decided the verdict | Best debugging field. Log it. |
+| `provider` | Provider attribution from an exact overlay hit (`"aws"`, `"azure"`, `"ProtonVPN"`, ...) | Display/log it when present; nil is normal. |
+| `context_flags` | Extra context that never decides the verdict | Useful for policy experiments; do not block solely on it. |
+| `flags` | Packed low-level artifact bits | Power-user/debug field; prefer `verdict` and `sources` in app code. |
+
+Common examples:
+
+- A DIGI Spain home IP is usually `category: "isp"` and `verdict: :residential_isp`. That is expected: `category` describes the ASN; `verdict` is OpenASN's safer application-level label.
+- An Amazon IP may be `category: "hosting"`, `sources: [:x4b_dc]`, and with Tier B enabled `provider: "aws"`. The verdict remains `:hosting`; Tier B only improves attribution.
+- `bad_asn` is not an accusation and not a verdict. It means the ASN appears in `brianhama/bad-asn-list`, a curated MIT-licensed hosting/cloud/colo ASN list. When that bit decides classification, `sources` includes `:asn_bad_asn`.
+- `:residential_isp` means "known eyeball ISP, no stronger infrastructure signal found." It does **not** mean "safe user."
+
 ### Verdict cheat sheet
 
 | Verdict | Meaning | Confidence | Advice |
