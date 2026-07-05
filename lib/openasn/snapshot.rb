@@ -117,21 +117,33 @@ module OpenASN
         base_ipv6: @v6.base.count
       }.freeze
       @tier_b_status = build_tier_b_status(store)
+      # Precomputed (family, maps_to) -> [[entry, layer], ...] index. The old
+      # per-lookup filter_map was fine at 8 overlays but allocation-heavy at
+      # 18+ (measured: 42us/lookup vs 15us overlay-less with 11 overlays -
+      # most of the gap was these throwaway arrays, not the binary searches).
+      # The snapshot is immutable, so build the index exactly once.
+      @overlay_index = {}
+      @overlays.each do |o|
+        { ipv4: o.v4, ipv6: o.v6 }.each do |fam, layer|
+          next unless layer
+
+          (@overlay_index[[fam, o.maps_to]] ||= []) << [o, layer].freeze
+        end
+      end
+      @overlay_index.each_value(&:freeze)
+      @overlay_index.freeze
       freeze
     end
 
     def family(fam) = fam == :ipv4 ? @v4 : @v6
 
+    EMPTY_OVERLAYS = [].freeze
+
     # Overlays for one family in a stable order (executor wrote them; order
     # among same-precedence overlays doesn't affect verdicts, only which
     # provider gets attribution on exotic multi-overlay hits).
     def overlays_for(fam, maps_to)
-      @overlays.filter_map do |o|
-        layer = fam == :ipv4 ? o.v4 : o.v6
-        next unless layer && o.maps_to == maps_to
-
-        [o, layer]
-      end
+      @overlay_index.fetch([fam, maps_to], EMPTY_OVERLAYS)
     end
 
     def org_name(asn)
