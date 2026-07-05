@@ -282,6 +282,13 @@ module OpenASN
       tokens.uniq
     end
 
+    register "strongvpn_locations_html" do |body|
+      tokens = body.scan(/\bvpn-[a-z0-9-]+\.reliablehosting\.com\b/i).map(&:downcase)
+      raise ParseError, "strongvpn_locations_html: no StrongVPN hostnames — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
     register "vpnsecure_locations_html" do |body|
       tokens = body.scan(%r{</div>\s*([a-z]{2,3}\d+)\s*<span[^>]*class=["'][^"']*\bstatus--up\b[^"']*["'][^>]*>\s*up\s*</span>}i)
                    .flatten

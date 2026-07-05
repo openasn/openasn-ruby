@@ -365,6 +365,19 @@
       "notes": "Opt-in DNS-expanded source: TunnelBear's first-party Linux setup article links this public OpenVPN ZIP. Parser extracts exact remote hostnames, including provider files suffixed .ovpn.txt; clients resolve them locally."
     },
     {
+      "id": "strongvpn_locations",
+      "url": "https://strongtech.org/locations/",
+      "parser": "strongvpn_locations_html",
+      "maps_to": "vpn",
+      "provider": "StrongVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "dns_threads": 24,
+      "notes": "Opt-in DNS-expanded source: StrongVPN/StrongTech first-party locations page publishes exact vpn-*.reliablehosting.com server hostnames. Clients resolve locally because the page publishes hostnames, not raw IPs; live smoke on 2026-07-05 saw many stale DNS names, so keep behind config.tier_b[:vpn_dns]."
+    },
+    {
       "id": "vpnbook_openvpn",
       "url": "https://www.vpnbook.com/freevpn/openvpn",
       "parser": "vpnbook_html_hosts",

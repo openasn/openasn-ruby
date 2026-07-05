@@ -154,7 +154,7 @@ OpenASN.configure do |config|
 end
 ```
 
-`vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, Windscribe, PrivadoVPN, and RiseupVPN. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `vpn_dns: true` opts into provider-published hostnames resolved by your server's DNS at update time, covering sources such as Surfshark, IPVanish, PrivateVPN, PureVPN, TorGuard, FastestVPN, VPNSecure, and TunnelBear; this is useful but intentionally off by default because DNS answers can vary by resolver/vantage. `public_relays: true` opts into volunteer/free relay networks such as VPN Gate and VPNBook, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays.
+`vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, Windscribe, PrivadoVPN, and RiseupVPN. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `vpn_dns: true` opts into provider-published hostnames resolved by your server's DNS at update time, covering sources such as Surfshark, IPVanish, PrivateVPN, PureVPN, TorGuard, FastestVPN, VPNSecure, TunnelBear, and StrongVPN; this is useful but intentionally off by default because DNS answers can vary by resolver/vantage. `public_relays: true` opts into volunteer/free relay networks such as VPN Gate and VPNBook, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays.
 
 ### Updates
 

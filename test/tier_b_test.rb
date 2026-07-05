@@ -153,6 +153,12 @@ class ParsersTest < Minitest::Test
     assert_equal ["au-stream.jumptoserver.com"], P.parse("html_table_hostnames", body)
   end
 
+  def test_strongvpn_locations_html
+    body = '<a href="http://vpn-sf85.reliablehosting.com/">Speedtest</a> VPN-LO54.RELIABLEHOSTING.COM'
+    assert_equal ["vpn-sf85.reliablehosting.com", "vpn-lo54.reliablehosting.com"],
+                 P.parse("strongvpn_locations_html", body)
+  end
+
   def test_vpnsecure_locations_html
     body = <<~HTML
       <dt>
