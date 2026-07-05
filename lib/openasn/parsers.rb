@@ -124,5 +124,105 @@ module OpenASN
 
       ranges
     end
+
+    # --- structured VPN provider publications -------------------------------
+
+    register "mullvad_relays_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "mullvad_relays_json: expected array" unless data.is_a?(Array)
+
+      # First-party public API behind https://mullvad.net/en/servers. Mozilla
+      # VPN / Firefox VPN use Mullvad infrastructure, but the relay list cannot
+      # distinguish a Mozilla customer from a direct Mullvad customer, so the
+      # provider attribution remains the network operator: Mullvad.
+      tokens = data.select { |r| r["active"] != false }.flat_map do |relay|
+        [relay["ipv4_addr_in"], relay["ipv6_addr_in"]]
+      end.compact
+      raise ParseError, "mullvad_relays_json: no active relay IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "ivpn_servers_json" do |body|
+      data = JSON.parse(body)
+      tokens = []
+      (data["wireguard"] || []).each do |location|
+        (location["hosts"] || []).each { |host| tokens << host["host"] }
+      end
+      (data["openvpn"] || []).each do |location|
+        tokens.concat(location["ip_addresses"] || [])
+      end
+      tokens.compact!
+      raise ParseError, "ivpn_servers_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "pia_servers_json" do |body|
+      # PIA appends a detached signature after the first JSON line. The first
+      # line is the server document the official clients consume.
+      data = JSON.parse(body.lines.first.to_s)
+      tokens = (data["regions"] || []).flat_map do |region|
+        next [] if region["offline"] == true
+
+        (region["servers"] || {}).values.flatten.filter_map { |server| server["ip"] }
+      end
+      raise ParseError, "pia_servers_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "airvpn_status_json" do |body|
+      data = JSON.parse(body)
+      tokens = (data["servers"] || []).flat_map do |server|
+        server.filter_map do |key, value|
+          value if key.match?(/\Aip_v[46]_in\d+\z/)
+        end
+      end
+      raise ParseError, "airvpn_status_json: no entry IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "windscribe_serverlist_json" do |body|
+      data = JSON.parse(body)
+      tokens = (data["data"] || []).flat_map do |location|
+        next [] unless location["status"] == 1
+
+        (location["groups"] || []).flat_map do |group|
+          group_tokens = [group["ping_ip"]]
+          group_tokens.concat((group["nodes"] || []).flat_map { |node| [node["ip"], node["ip2"], node["ip3"]] })
+          group_tokens
+        end
+      end.compact
+      raise ParseError, "windscribe_serverlist_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "nordvpn_servers_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "nordvpn_servers_json: expected array" unless data.is_a?(Array)
+
+      tokens = data.select { |server| server["status"] == "online" }.flat_map do |server|
+        ips = [server["station"], server["ipv6_station"]]
+        ips.concat((server["ips"] || []).filter_map { |entry| entry.dig("ip", "ip") })
+        ips
+      end.compact.reject(&:empty?)
+      raise ParseError, "nordvpn_servers_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "vpngate_csv" do |body|
+      tokens = body.each_line.filter_map do |line|
+        next if line.start_with?("*", "#")
+
+        line.split(",", 3)[1]&.strip
+      end
+      raise ParseError, "vpngate_csv: no relay IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
   end
 end

@@ -49,8 +49,64 @@ class ParsersTest < Minitest::Test
     assert_equal ["165.225.0.0/17", "2a03:eec0::/32"], P.parse("zscaler_json", body)
   end
 
+  def test_mullvad_relays_json
+    body = JSON.generate([
+      { active: true, ipv4_addr_in: "146.70.128.194", ipv6_addr_in: "2a04:27c0::1" },
+      { active: false, ipv4_addr_in: "146.70.128.195" }
+    ])
+    assert_equal ["146.70.128.194", "2a04:27c0::1"], P.parse("mullvad_relays_json", body)
+  end
+
+  def test_ivpn_servers_json
+    body = JSON.generate({
+      wireguard: [{ hosts: [{ host: "37.120.206.53" }] }],
+      openvpn: [{ ip_addresses: ["37.120.206.50"] }]
+    })
+    assert_equal ["37.120.206.53", "37.120.206.50"], P.parse("ivpn_servers_json", body)
+  end
+
+  def test_pia_servers_json
+    body = JSON.generate({
+      regions: [
+        { offline: false, servers: { wg: [{ ip: "151.241.119.235" }],
+                                     ovpntcp: [{ ip: "151.241.119.240" }] } },
+        { offline: true, servers: { wg: [{ ip: "192.0.2.10" }] } }
+      ]
+    }) + "\n---signature---\n"
+    assert_equal ["151.241.119.235", "151.241.119.240"], P.parse("pia_servers_json", body)
+  end
+
+  def test_airvpn_status_json
+    body = JSON.generate({ servers: [{ ip_v4_in1: "185.156.175.170", ip_v4_in2: "185.156.175.172",
+                                       ip_v6_in1: "2001:ac8:28:8::1" }] })
+    assert_equal ["185.156.175.170", "185.156.175.172", "2001:ac8:28:8::1"],
+                 P.parse("airvpn_status_json", body)
+  end
+
+  def test_windscribe_serverlist_json
+    body = JSON.generate({ data: [{ status: 1, groups: [{ ping_ip: "198.44.137.19",
+                                                          nodes: [{ ip: "198.44.137.43",
+                                                                    ip2: "198.44.137.44",
+                                                                    ip3: "198.44.137.45" }] }] }] })
+    assert_equal ["198.44.137.19", "198.44.137.43", "198.44.137.44", "198.44.137.45"],
+                 P.parse("windscribe_serverlist_json", body)
+  end
+
+  def test_nordvpn_servers_json
+    body = JSON.generate([{ status: "online", station: "194.99.105.99", ipv6_station: "",
+                            ips: [{ ip: { ip: "194.99.105.99" } }] },
+                          { status: "offline", station: "192.0.2.55" }])
+    assert_equal ["194.99.105.99"], P.parse("nordvpn_servers_json", body)
+  end
+
+  def test_vpngate_csv
+    body = "*vpn_servers\n#HostName,IP,...\npublic-vpn-1,219.100.37.224,score,...\n"
+    assert_equal ["219.100.37.224"], P.parse("vpngate_csv", body)
+  end
+
   def test_schema_drift_raises_parse_error
     assert_raises(P::ParseError) { P.parse("aws_json", "{}") }
+    assert_raises(P::ParseError) { P.parse("mullvad_relays_json", "[]") }
     assert_raises(P::ParseError) { P.parse("aws_json", "not json") }
     assert_raises(P::ParseError) { P.parse("nope_parser", "x") }
   end

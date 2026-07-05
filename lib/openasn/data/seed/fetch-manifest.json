@@ -125,7 +125,84 @@
       "on_failure": "keep_stale",
       "enabled_default": true,
       "license": "Apache-2.0",
-      "notes": "Exit IPs scraped from ProtonVPN's own API by tn3w/ProtonVPN-IPs (LICENSE verified Apache-2.0, default branch master). Exit IPs are the classification-relevant set for inbound traffic. Sibling repos (Windscribe-IPs, TunnelBear-IPs) NOT enabled: licenses unverified as of 2026-07-04 - verify each LICENSE before adding."
+      "notes": "Exit IPs scraped from ProtonVPN's own API by tn3w/ProtonVPN-IPs (LICENSE verified Apache-2.0, default branch master). Proton's official API now requires app headers/session auth for anonymous callers (verified 2026-07-05), so this licensed feed remains the clean default until Proton publishes a stable public endpoint."
+    },
+    {
+      "id": "mullvad_relays",
+      "url": "https://api.mullvad.net/www/relays/all/",
+      "parser": "mullvad_relays_json",
+      "maps_to": "vpn",
+      "provider": "Mullvad",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party public relay API used by Mullvad's server list (https://mullvad.net/en/servers). Parser keeps active exact relay IPs only (ipv4_addr_in/ipv6_addr_in); do NOT widen to /24. Mozilla VPN / Firefox VPN use Mullvad infrastructure (https://www.mozilla.org/en-US/products/vpn/resource-center/vpn-servers-around-the-world/), but the egress IP cannot distinguish Mozilla users from direct Mullvad users, so provider attribution stays 'Mullvad'."
+    },
+    {
+      "id": "ivpn_servers",
+      "url": "https://api.ivpn.net/v4/servers.json",
+      "parser": "ivpn_servers_json",
+      "maps_to": "vpn",
+      "provider": "IVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party IVPN server status JSON linked from/supporting https://www.ivpn.net/en/status/. Parser collects exact WireGuard hosts[].host and OpenVPN ip_addresses[]."
+    },
+    {
+      "id": "pia_servers",
+      "url": "https://serverlist.piaservers.net/vpninfo/servers/v6",
+      "parser": "pia_servers_json",
+      "maps_to": "vpn",
+      "provider": "Private Internet Access",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party PIA client server list. Body is JSON on the first line followed by a detached signature; parser reads region server IPs for WireGuard/OpenVPN/IKEv2/meta groups and skips offline regions."
+    },
+    {
+      "id": "airvpn_status",
+      "url": "https://airvpn.org/api/status/",
+      "parser": "airvpn_status_json",
+      "maps_to": "vpn",
+      "provider": "AirVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party public status API (AirVPN forum confirms it lists all servers and entry IP addresses: https://airvpn.org/forums/topic/74903-servers-ips-list/). Parser collects ip_v4_in*/ip_v6_in* exact entry IPs; deprecated ip_entry fields are intentionally ignored."
+    },
+    {
+      "id": "windscribe_servers",
+      "url": "https://assets.windscribe.com/serverlist/mob-v2/1/0",
+      "parser": "windscribe_serverlist_json",
+      "maps_to": "vpn",
+      "provider": "Windscribe",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party Windscribe mobile server list JSON. Parser collects active locations' ping_ip and node ip/ip2/ip3 exact IPs; hostnames are ignored because OpenASN does not do DNS expansion inside Tier B."
+    },
+    {
+      "id": "nordvpn_servers",
+      "url": "https://api.nordvpn.com/v1/servers?limit=0",
+      "parser": "nordvpn_servers_json",
+      "maps_to": "vpn",
+      "provider": "NordVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Opt-in: first-party NordVPN API returns exact station/ips[].ip.ip values, but the response is large (~35MB live on 2026-07-05) and Nord's public server API history is unstable/deprecated in places. Keep behind config.tier_b[:vpn_heavy]. Official server list docs: https://support.nordvpn.com/hc/en-us/articles/19383127694225-Where-can-I-find-the-NordVPN-server-list"
+    },
+    {
+      "id": "vpngate",
+      "url": "http://www.vpngate.net/api/iphone/",
+      "parser": "vpngate_csv",
+      "maps_to": "vpn",
+      "provider": "VPN Gate",
+      "cadence_hours": 6,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Opt-in: official VPN Gate Academic Experiment public relay API. These are volunteer relays, often residential/ISP IPs while actively serving VPN traffic; exact current hits are valuable but high-churn, so keep behind config.tier_b[:public_relays]. Parser reads the CSV IP column only and ignores embedded OpenVPN configs."
     },
     {
       "id": "zscaler",

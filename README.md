@@ -39,7 +39,7 @@ It's the missing first line of defense for signups, checkouts, and abuse-prone e
 
 - **Bundled seed**: the gem ships with a full snapshot — works offline from the first boot, forever.
 - **Nightly refresh**: `OpenASN::UpdateJob` pulls updated artifacts (SHA-256 verified, atomically swapped — readers never block, never see partial data).
-- **Tier B overlays**: fast-moving lists (Tor exits change hourly; Apple publishes Private Relay egress for recognition) are fetched by *your* server directly from the original authorities — never proxied through anyone.
+- **Tier B overlays**: fast-moving lists (Tor exits, Apple Private Relay, cloud ranges, exact VPN provider server lists) are fetched by *your* server directly from the original authorities — never proxied through anyone.
 - **Data never flows through gem releases.** The gem versions on code; the data has its own nightly release channel.
 
 ## Installation
@@ -147,10 +147,14 @@ OpenASN.configure do |config|
   config.release_url  = "https://github.com/openasn/openasn/releases/latest/download/" # self-hostable
   config.pin_version  = nil       # e.g. "2026-07-04" to pin a dated data release
   config.tier_b       = { apple_relay: true, tor: true, clouds: true,
-                          vpn_providers: true, zscaler: false, nazgul_mixed: false }
+                          vpn_providers: true, vpn_heavy: false,
+                          public_relays: false, zscaler: false,
+                          nazgul_mixed: false }
   config.logger       = Rails.logger
 end
 ```
+
+`vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, and Windscribe. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `public_relays: true` opts into volunteer relay networks such as VPN Gate, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays.
 
 ### Updates
 

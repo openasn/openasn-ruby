@@ -34,7 +34,10 @@ module OpenASN
     #   tor            → tor_exits                  (:tor_exit)
     #   clouds         → aws gcp azure oracle digitalocean linode vultr
     #                    + cloudflare_ranges context flag
-    #   vpn_providers  → protonvpn (first-party provider lists)
+    #   vpn_providers  → protonvpn mullvad ivpn pia airvpn windscribe
+    #                    (exact provider-attributed VPN exit/server IPs)
+    #   vpn_heavy      → nordvpn                    (large/fragile provider API)
+    #   public_relays  → vpngate                    (volunteer public VPN relays)
     #   zscaler        → zscaler                    (:enterprise_gateway ranges)
     #   nazgul_mixed   → nazgul_mixed               (flag only, never :vpn)
     attr_accessor :tier_b
@@ -66,6 +69,8 @@ module OpenASN
       clouds: true,
       zscaler: false,       # ASN-level enterprise_gateway overrides already cover Zscaler
       vpn_providers: true,
+      vpn_heavy: false,     # e.g. NordVPN's ~35MB API response; opt in deliberately
+      public_relays: false, # volunteer relays like VPN Gate; useful, but high-churn
       nazgul_mixed: false   # semantics broader than VPN; opt-in only
     }.freeze
 
@@ -75,7 +80,9 @@ module OpenASN
       tor: %w[tor_exits],
       clouds: %w[aws gcp azure oracle digitalocean linode vultr cloudflare_ranges],
       zscaler: %w[zscaler],
-      vpn_providers: %w[protonvpn],
+      vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers],
+      vpn_heavy: %w[nordvpn_servers],
+      public_relays: %w[vpngate],
       nazgul_mixed: %w[nazgul_mixed]
     }.freeze
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added exact-IP Tier B parsers and configuration groups for Mullvad, IVPN,
+  Private Internet Access, AirVPN, Windscribe, NordVPN (`vpn_heavy` opt-in),
+  and VPN Gate (`public_relays` opt-in).
+
 ## [0.1.0] - 2026-07-05
 
 - Initial release: offline IP origin classification (verdict-first API),

@@ -26,7 +26,9 @@ OpenASN.configure do |config|
   #   apple_relay: true,     # iCloud Private Relay → :relay (real users! never block)
   #   tor: true,             # Tor Project exits    → :tor_exit
   #   clouds: true,          # AWS/GCP/Azure/OCI/DO/Linode/Vultr → :hosting (+provider)
-  #   vpn_providers: true,   # first-party VPN lists (ProtonVPN) → :vpn (+provider)
+  #   vpn_providers: true,   # exact VPN provider lists → :vpn (+provider)
+  #   vpn_heavy: false,      # large/fragile provider APIs (NordVPN) — opt-in
+  #   public_relays: false,  # volunteer public VPN relays (VPN Gate) — opt-in
   #   zscaler: false,        # extra :enterprise_gateway ranges (ASN flags already cover most)
   #   nazgul_mixed: false    # broad "high-risk hosting" flag — NOT a VPN signal; opt-in
   # }
