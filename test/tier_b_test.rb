@@ -208,6 +208,48 @@ class ParsersTest < Minitest::Test
     assert_equal ["217.138.204.35"], P.parse("ovpn_status_servers_json", body)
   end
 
+  def test_anonine_status_json
+    body = JSON.generate([
+      {
+        primary_ip: "198.57.26.18",
+        alias: "ca-tr.anonine.net",
+        servers: [{ host: "ca-tr.anonine.net", ips: ["198.57.26.18", "198.57.26.19"] }]
+      },
+      {
+        primary_ip: "80.90.55.57",
+        servers: [{ host: "lu.anonine.net", ips: ["80.90.55.168"] }]
+      }
+    ])
+    assert_equal ["198.57.26.18", "198.57.26.19", "80.90.55.57", "80.90.55.168"],
+                 P.parse("anonine_status_json", body)
+  end
+
+  def test_azirevpn_locations_json
+    body = JSON.generate({ locations: [{ name: "se-sto", pool: "se-sto.azirevpn.net" },
+                                       { name: "nl-ams", pool: "nl-ams.azirevpn.net" }] })
+    assert_equal ["se-sto.azirevpn.net", "nl-ams.azirevpn.net"], P.parse("azirevpn_locations_json", body)
+  end
+
+  def test_vpnac_status_html
+    body = <<~HTML
+      <table>
+        <tr><td>Australia</td><td>au1.vpn.ac</td><td>1%</td></tr>
+        <tr><td>Not a cell hostname: ignored.vpn.ac</td></tr>
+        <a href="https://blog.vpn.ac">blog.vpn.ac</a>
+      </table>
+    HTML
+    assert_equal ["au1.vpn.ac"], P.parse("vpnac_status_html", body)
+  end
+
+  def test_trustzone_servers_html
+    body = <<~HTML
+      <a href="/setup/ios/ovpn/us-wa">United States-Washington us-wa.trust.zone</a>
+      <a href="/">www.trust.zone</a>
+      <span>Japan-Netflix jp-nfx.trust.zone VIP</span>
+    HTML
+    assert_equal ["us-wa.trust.zone", "jp-nfx.trust.zone"], P.parse("trustzone_servers_html", body)
+  end
+
   def test_slickvpn_locations_html
     body = <<~HTML
       <p>Amsterdam - <a href="https://members.newsdemon.com/vpn/2025/SV-2025-Amsterdam.ovpn">gw2.ams3.slickvpn.com</a></p>

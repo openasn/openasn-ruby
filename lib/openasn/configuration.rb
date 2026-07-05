@@ -36,10 +36,12 @@ module OpenASN
     #                    + cloudflare_ranges context flag
     #   vpn_providers  → protonvpn mullvad ivpn pia airvpn windscribe
     #                    privado riseup wlvpn worldvpn ovpn
+    #                    anonine
     #                    (exact provider-attributed VPN exit/server IPs)
     #   vpn_heavy      → nordvpn                    (large/fragile provider API)
     #   vpn_dns        → surfshark ipvanish privatevpn purevpn torguard fastestvpn vpnsecure
     #                    tunnelbear strongvpn vyprvpn giganews slickvpn
+    #                    azirevpn vpn.ac trust.zone
     #                    (provider hostnames resolved locally; opt-in)
     #   public_relays  → vpngate vpnbook freevpn.us (volunteer/free public VPN relays)
     #   zscaler        → zscaler                    (:enterprise_gateway ranges)
@@ -86,12 +88,14 @@ module OpenASN
       clouds: %w[aws gcp azure oracle digitalocean linode vultr cloudflare_ranges],
       zscaler: %w[zscaler],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
-                        privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_status_servers],
+                        privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_status_servers
+                        anonine_status],
       vpn_heavy: %w[nordvpn_servers],
       vpn_dns: %w[surfshark_generic surfshark_static surfshark_obfuscated ipvanish_openvpn
                   privatevpn_openvpn purevpn_openvpn torguard_openvpn_tcp torguard_openvpn_udp
                   fastestvpn_tcp fastestvpn_udp vpnsecure_locations tunnelbear_openvpn strongvpn_locations
-                  vyprvpn_openvpn giganews_vyprvpn_hosts slickvpn_locations],
+                  vyprvpn_openvpn giganews_vyprvpn_hosts slickvpn_locations azirevpn_locations
+                  vpnac_status trustzone_servers],
       public_relays: %w[vpngate vpnbook_openvpn freevpn_us_servers],
       nazgul_mixed: %w[nazgul_mixed]
     }.freeze

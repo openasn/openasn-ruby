@@ -354,6 +354,48 @@ module OpenASN
       tokens.uniq
     end
 
+    register "anonine_status_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "anonine_status_json: expected array" unless data.is_a?(Array)
+
+      tokens = data.flat_map do |row|
+        server_ips = (row["servers"] || []).flat_map { |server| server["ips"] || [] }
+        [row["primary_ip"], *server_ips]
+      end.compact
+      raise ParseError, "anonine_status_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "azirevpn_locations_json" do |body|
+      data = JSON.parse(body)
+      rows = data["locations"]
+      raise ParseError, "azirevpn_locations_json: expected locations array" unless rows.is_a?(Array)
+
+      tokens = rows.filter_map { |location| location["pool"] }
+      raise ParseError, "azirevpn_locations_json: no pool hostnames — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "vpnac_status_html" do |body|
+      tokens = body.scan(%r{<td\b[^>]*>\s*([a-z0-9][a-z0-9.-]*\.vpn\.ac)\s*</td>}i)
+                   .flatten
+                   .map(&:downcase)
+      raise ParseError, "vpnac_status_html: no status table hostnames — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "trustzone_servers_html" do |body|
+      tokens = body.scan(/\b[a-z0-9]+(?:-[a-z0-9]+)*\.trust\.zone\b/i)
+                   .map(&:downcase)
+                   .reject { |host| host == "www.trust.zone" || host == "trust.zone" }
+      raise ParseError, "trustzone_servers_html: no Trust.Zone server hostnames — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
     register "slickvpn_locations_html" do |body|
       tokens = body.scan(%r{<a\b[^>]*href=["']https://members\.newsdemon\.com/vpn/2025/[^"']+\.ovpn["'][^>]*>(.*?)</a>}im).flat_map do |label|
         label.first.to_s.gsub(/<[^>]*>/, " ").scan(/\bgw\d+\.[a-z0-9.-]+\.slickvpn\.com\b/i)

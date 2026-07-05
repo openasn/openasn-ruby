@@ -282,6 +282,53 @@
       "notes": "First-party OVPN status API used by https://status.ovpn.com's Servers-List Vue component (GET /datacenters/{slug}/servers). Parser keeps exact IPs for rows whose online flag is not false; no config-form CSRF workflow, hostname inference, DNS expansion, ASN widening, or status-page HTML scraping."
     },
     {
+      "id": "anonine_status",
+      "url": "https://anonine.com/www/server-status",
+      "parser": "anonine_status_json",
+      "maps_to": "vpn",
+      "provider": "Anonine",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party JSON endpoint called by Anonine's public Network page Gatsby bundle (serverStatusUrl() -> /www/server-status). Parser reads exact primary_ip values and servers[].ips arrays. The endpoint also includes host aliases, but OpenASN uses exact IPs here so this can stay in the default exact-IP provider set."
+    },
+    {
+      "id": "azirevpn_locations",
+      "url": "https://api.azirevpn.com/v3/locations",
+      "parser": "azirevpn_locations_json",
+      "maps_to": "vpn",
+      "provider": "AzireVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "notes": "Opt-in DNS-expanded source: AzireVPN's official API docs publish the unauthenticated GET /v3/locations endpoint and describe the pool field as the hostname pool with IPs available for the location (https://www.azirevpn.com/docs/api/locations). Clients resolve those pool hostnames locally, so results stay behind config.tier_b[:vpn_dns]. AzireVPN's current site/legal footer redirects to Malwarebytes legal pages and says (c) 2012-2026 Malwarebytes."
+    },
+    {
+      "id": "vpnac_status",
+      "url": "https://vpn.ac/status",
+      "parser": "vpnac_status_html",
+      "maps_to": "vpn",
+      "provider": "VPN.AC",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "notes": "Opt-in DNS-expanded source: VPN.AC's official VPN Nodes Status page publishes exact *.vpn.ac hostnames in the status table, and its official /ovpn/ directory publishes matching OpenVPN config bundles. Clients resolve the hostnames locally because the page publishes hostnames, not raw IPs."
+    },
+    {
+      "id": "trustzone_servers",
+      "url": "https://trust.zone/servers",
+      "parser": "trustzone_servers_html",
+      "maps_to": "vpn",
+      "provider": "Trust.Zone",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "notes": "Opt-in DNS-expanded source: Trust.Zone's first-party Zones & Servers page publishes exact *.trust.zone zone hostnames. Manual OpenVPN setup pages keep the downloadable .ovpn files hidden behind login, so this source intentionally uses only the public server page and local DNS resolution."
+    },
+    {
       "id": "surfshark_generic",
       "url": "https://api.surfshark.com/v4/server/clusters/generic",
       "parser": "surfshark_clusters_json",
