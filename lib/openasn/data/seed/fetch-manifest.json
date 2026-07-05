@@ -400,6 +400,30 @@
       "notes": "Opt-in DNS-expanded source: StrongVPN/StrongTech first-party locations page publishes exact vpn-*.reliablehosting.com server hostnames. Clients resolve locally because the page publishes hostnames, not raw IPs; live smoke on 2026-07-05 saw many stale DNS names, so keep behind config.tier_b[:vpn_dns]."
     },
     {
+      "id": "vyprvpn_openvpn",
+      "url": "https://support.vyprvpn.com/hc/article_attachments/46761120489229",
+      "parser": "ovpn_zip_remote_hosts",
+      "maps_to": "vpn",
+      "provider": "VyprVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "notes": "Opt-in DNS-expanded source: VyprVPN's first-party support article links this public OpenVPN ZIP (filename VyprVPN_OpenVPN_2026-03-06.zip; fetched 2026-07-05 with Last-Modified 2026-06-18). Parser extracts exact *.vyprvpn.com remote hostnames; clients resolve them locally. Some embedded cert metadata still names Golden Frog, which is legacy branding for the current Certida-operated service."
+    },
+    {
+      "id": "giganews_vyprvpn_hosts",
+      "url": "https://support.giganews.com/hc/en-us/articles/360039615432-What-are-the-VyprVPN-Server-Addresses",
+      "parser": "html_table_hostnames",
+      "maps_to": "vpn",
+      "provider": "Giganews VyprVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "notes": "Opt-in DNS-expanded source: Giganews first-party support page publishes exact *.vpn.giganews.com hostnames for VyprVPN bundled with Giganews accounts and says IP addresses are subject to change, so clients resolve hostnames locally."
+    },
+    {
       "id": "vpnbook_openvpn",
       "url": "https://www.vpnbook.com/freevpn/openvpn",
       "parser": "vpnbook_html_hosts",

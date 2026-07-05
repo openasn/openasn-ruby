@@ -149,8 +149,12 @@ class ParsersTest < Minitest::Test
   end
 
   def test_html_table_hostnames
-    body = "<tr><td>Australia</td><td>Sydney</td><td>au-stream.jumptoserver.com</td></tr>"
-    assert_equal ["au-stream.jumptoserver.com"], P.parse("html_table_hostnames", body)
+    body = <<~HTML
+      <tr><td>Australia</td><td>Sydney</td><td>AU-STREAM.JUMPTOSERVER.COM</td></tr>
+      <tr><td>Canada</td><td>ca1.<span>vpn.giganews.com</span></td></tr>
+    HTML
+    assert_equal ["au-stream.jumptoserver.com", "ca1.vpn.giganews.com"],
+                 P.parse("html_table_hostnames", body.b)
   end
 
   def test_strongvpn_locations_html

@@ -291,7 +291,15 @@ module OpenASN
     end
 
     register "html_table_hostnames" do |body|
-      tokens = body.scan(%r{<td>\s*([a-z0-9.-]+\.[a-z]{2,63})\s*</td>}i).flatten
+      tokens = body.scan(%r{<td\b[^>]*>(.*?)</td>}im).flat_map do |cell|
+        # Some first-party support tables split hostnames across inline tags,
+        # e.g. `ca1.<span>vpn.giganews.com</span>`. Strip markup inside each
+        # cell before scanning so the parser stays generic without scraping
+        # arbitrary hostnames from the whole page chrome.
+        text = cell.first.to_s.dup.force_encoding(Encoding::UTF_8).scrub
+                   .gsub(/<[^>]*>/, "").gsub(/&nbsp;|&#160;/i, " ").tr("\u00A0", " ")
+        text.scan(/\b[a-z0-9.-]+\.[a-z]{2,63}\b/i)
+      end.map(&:downcase)
       raise ParseError, "html_table_hostnames: no hostnames — schema changed?" if tokens.empty?
 
       tokens.uniq
