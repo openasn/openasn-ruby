@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "json"
+require "socket"
+require "thread"
+require "timeout"
 
 module OpenASN
   # Executes fetch-manifest.json: pulls each enabled Tier B source from its
@@ -19,6 +22,17 @@ module OpenASN
   #   * Every request carries the descriptive User-Agent. These are mostly
   #     free/volunteer endpoints; being a good citizen is part of the deal.
   class TierB
+    DEFAULT_DNS_THREADS = 16
+    MAX_DNS_THREADS = 32
+    DNS_TIMEOUT_SECONDS = 4
+
+    class << self
+      attr_accessor :dns_resolver
+    end
+    self.dns_resolver = lambda do |hostname|
+      Socket.getaddrinfo(hostname, nil, Socket::AF_UNSPEC, Socket::SOCK_STREAM).map { |entry| entry[3] }.uniq
+    end
+
     def initialize(config, http)
       @config = config
       @http = http
@@ -82,7 +96,7 @@ module OpenASN
       not_modified = false
 
       urls.each do |url|
-        response = @http.get(url, etag: etag)
+        response = fetch_source_url(source, url, etag)
         if response == :not_modified
           not_modified = true
           break
@@ -90,6 +104,7 @@ module OpenASN
         new_etag = response.etag if urls.length == 1
         tokens.concat(Parsers.parse(source["parser"], response.body))
       end
+      tokens = resolve_hostnames(tokens, source)
 
       if not_modified
         @store.record_fresh(id)
@@ -116,6 +131,14 @@ module OpenASN
       false
     end
 
+    def fetch_source_url(source, url, etag)
+      if source["method"].to_s.upcase == "POST"
+        @http.post_form(url, source["form"] || {})
+      else
+        @http.get(url, etag: etag)
+      end
+    end
+
     def due?(id, cadence_hours)
       last = @store.fetched_at(id)
       return true unless last
@@ -131,8 +154,60 @@ module OpenASN
       elsif source["url"]
         urls << source["url"]
       end
+      urls.concat(source["urls"]) if source["urls"].is_a?(Array)
       urls << source["url_ipv6"] if source["url_ipv6"]
       urls
+    end
+
+    def resolve_hostnames(tokens, source)
+      return tokens unless source["resolve_hostnames"]
+
+      direct = []
+      hosts = []
+      tokens.each do |token|
+        token = token.to_s.strip
+        next if token.empty?
+
+        if CidrUtils.parse(token)
+          direct << token
+        elsif hostname?(token)
+          hosts << token.downcase
+        end
+      end
+      hosts.uniq!
+      return direct if hosts.empty?
+
+      resolved = resolve_hosts(hosts, source)
+      @logger.info("openasn: tier B #{source['id']}: resolved #{resolved.length} IPs from #{hosts.length} hostnames")
+      direct + resolved
+    end
+
+    def resolve_hosts(hosts, source)
+      threads = [[source["dns_threads"] || DEFAULT_DNS_THREADS, MAX_DNS_THREADS].min, hosts.length].min
+      queue = Queue.new
+      hosts.each { |host| queue << host }
+      resolved = []
+      mutex = Mutex.new
+
+      workers = threads.times.map do
+        Thread.new do
+          loop do
+            host = queue.pop(true)
+            ips = Timeout.timeout(DNS_TIMEOUT_SECONDS) { self.class.dns_resolver.call(host) }
+            mutex.synchronize { resolved.concat(ips) }
+          rescue ThreadError
+            break
+          rescue StandardError
+            next
+          end
+        end
+      end
+      workers.each(&:join)
+      resolved.uniq
+    end
+
+    def hostname?(token)
+      token.match?(/\A(?=.{1,253}\z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}\z/i)
     end
 
     # Azure's actual JSON URL rotates weekly behind the download page.

@@ -32,7 +32,7 @@ module OpenASN
       headers = { "User-Agent" => @user_agent, "Accept-Encoding" => "identity" }
       headers["If-None-Match"] = etag if etag
 
-      response = request(url, headers, MAX_REDIRECTS)
+      response = request(Net::HTTP::Get, url, headers, MAX_REDIRECTS)
       case response
       when Net::HTTPNotModified then :not_modified
       when Net::HTTPSuccess then Response.new(body: response.body, etag: response["etag"])
@@ -40,9 +40,20 @@ module OpenASN
       end
     end
 
+    def post_form(url, form)
+      headers = { "User-Agent" => @user_agent,
+                  "Accept-Encoding" => "identity",
+                  "Content-Type" => "application/x-www-form-urlencoded" }
+      response = request(Net::HTTP::Post, url, headers, MAX_REDIRECTS, URI.encode_www_form(form))
+      case response
+      when Net::HTTPSuccess then Response.new(body: response.body, etag: response["etag"])
+      else raise UpdateError, "HTTP #{response.code} for #{url}"
+      end
+    end
+
     private
 
-    def request(url, headers, redirects_left)
+    def request(method, url, headers, redirects_left, body = nil)
       raise UpdateError, "too many redirects for #{url}" if redirects_left.zero?
 
       uri = URI(url)
@@ -51,7 +62,9 @@ module OpenASN
       http.open_timeout = OPEN_TIMEOUT
       http.read_timeout = READ_TIMEOUT
 
-      response = http.request(Net::HTTP::Get.new(uri, headers))
+      request = method.new(uri, headers)
+      request.body = body if body
+      response = http.request(request)
       # Ruby models 304 Not Modified as a 3xx response, but it is not a
       # redirect and correctly has no Location header. Return it to #get so
       # conditional GETs are clean :not_modified events instead of noisy
@@ -62,8 +75,10 @@ module OpenASN
 
         location = URI.join(url, location).to_s unless location.start_with?("http")
         # Conditional headers stay on the ORIGINAL url's cache identity;
-        # redirect targets are one-off signed URLs.
-        return request(location, { "User-Agent" => @user_agent }, redirects_left - 1)
+        # redirect targets are one-off signed URLs. Keep method headers such
+        # as Content-Type for POST-form provider endpoints.
+        redirect_headers = headers.reject { |key, _| key.casecmp("If-None-Match").zero? }
+        return request(method, location, redirect_headers, redirects_left - 1, body)
       end
       response
     end

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "zlib"
 
 module OpenASN
   # Tier B body parsers, keyed by the `parser` ids in fetch-manifest.json.
@@ -200,12 +201,39 @@ module OpenASN
       tokens.uniq
     end
 
+    register "privado_servers_json" do |body|
+      data = JSON.parse(body)
+      tokens = (data["servers"] || []).filter_map { |server| server["ip"] }
+      raise ParseError, "privado_servers_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "leap_eip_service_json" do |body|
+      data = JSON.parse(body)
+      tokens = (data["gateways"] || []).filter_map { |gateway| gateway["ip_address"] }
+      raise ParseError, "leap_eip_service_json: no gateway IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "surfshark_clusters_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "surfshark_clusters_json: expected array" unless data.is_a?(Array)
+
+      tokens = data.filter_map { |cluster| cluster["connectionName"] }
+      raise ParseError, "surfshark_clusters_json: no connectionName hostnames — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
     register "nordvpn_servers_json" do |body|
       data = JSON.parse(body)
+      data = data["servers"] if data.is_a?(Hash)
       raise ParseError, "nordvpn_servers_json: expected array" unless data.is_a?(Array)
 
       tokens = data.select { |server| server["status"] == "online" }.flat_map do |server|
-        ips = [server["station"], server["ipv6_station"]]
+        ips = [server["station"], server["ipv6_station"], server["station_ipv6"]]
         ips.concat((server["ips"] || []).filter_map { |entry| entry.dig("ip", "ip") })
         ips
       end.compact.reject(&:empty?)
@@ -223,6 +251,101 @@ module OpenASN
       raise ParseError, "vpngate_csv: no relay IPs — schema changed?" if tokens.empty?
 
       tokens.uniq
+    end
+
+    register "ovpn_zip_remote_hosts" do |body|
+      tokens = unzip_files(body).flat_map do |name, content|
+        next [] unless name.downcase.end_with?(".ovpn")
+
+        openvpn_remote_hosts(content)
+      end
+      raise ParseError, "ovpn_zip_remote_hosts: no OpenVPN remote hosts — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "vpnbook_html_hosts" do |body|
+      tokens = body.scan(/\b[a-z0-9-]+\.vpnbook\.com\b/i).reject { |host| host.downcase == "www.vpnbook.com" }
+      raise ParseError, "vpnbook_html_hosts: no vpnbook.com hosts — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "html_table_hostnames" do |body|
+      tokens = body.scan(%r{<td>\s*([a-z0-9.-]+\.[a-z]{2,63})\s*</td>}i).flatten
+      raise ParseError, "html_table_hostnames: no hostnames — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "vpnsecure_locations_html" do |body|
+      tokens = body.scan(%r{</div>\s*([a-z]{2,3}\d+)\s*<span[^>]*class=["'][^"']*\bstatus--up\b[^"']*["'][^>]*>\s*up\s*</span>}i)
+                   .flatten
+                   .map { |host| "#{host.downcase}.isponeder.com" }
+      raise ParseError, "vpnsecure_locations_html: no up hosts — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    class << self
+      private
+
+      def openvpn_remote_hosts(content)
+        content.each_line.filter_map do |line|
+          match = line.match(/\Aremote\s+([^\s]+)(?:\s|$)/i)
+          match && match[1].delete_prefix("[").delete_suffix("]")
+        end
+      end
+
+      # Minimal ZIP reader for first-party OpenVPN config archives. We keep
+      # this in stdlib Ruby instead of adding rubyzip so the gem stays
+      # dependency-free. It supports the two methods seen in provider archives:
+      # stored (0) and deflated (8), using the central directory so data
+      # descriptors in local file headers do not matter.
+      def unzip_files(body)
+        bytes = body.b
+        eocd = bytes.rindex("PK\x05\x06".b) or raise ParseError, "zip: missing end of central directory"
+        entries = bytes.byteslice(eocd + 10, 2).unpack1("v")
+        cd_offset = bytes.byteslice(eocd + 16, 4).unpack1("V")
+        pos = cd_offset
+        files = []
+
+        entries.times do
+          raise ParseError, "zip: malformed central directory" unless bytes.byteslice(pos, 4) == "PK\x01\x02".b
+
+          method = bytes.byteslice(pos + 10, 2).unpack1("v")
+          compressed_size = bytes.byteslice(pos + 20, 4).unpack1("V")
+          name_length = bytes.byteslice(pos + 28, 2).unpack1("v")
+          extra_length = bytes.byteslice(pos + 30, 2).unpack1("v")
+          comment_length = bytes.byteslice(pos + 32, 2).unpack1("v")
+          local_offset = bytes.byteslice(pos + 42, 4).unpack1("V")
+          name = bytes.byteslice(pos + 46, name_length).force_encoding(Encoding::UTF_8).scrub
+          pos += 46 + name_length + extra_length + comment_length
+
+          next if name.end_with?("/")
+          raise ParseError, "zip: malformed local header for #{name}" unless bytes.byteslice(local_offset, 4) == "PK\x03\x04".b
+
+          local_name_length = bytes.byteslice(local_offset + 26, 2).unpack1("v")
+          local_extra_length = bytes.byteslice(local_offset + 28, 2).unpack1("v")
+          data_start = local_offset + 30 + local_name_length + local_extra_length
+          compressed = bytes.byteslice(data_start, compressed_size)
+          content = case method
+                    when 0 then compressed
+                    when 8
+                      inflater = Zlib::Inflate.new(-Zlib::MAX_WBITS)
+                      begin
+                        inflater.inflate(compressed) + inflater.finish
+                      ensure
+                        inflater.close
+                      end
+                    else
+                      raise ParseError, "zip: unsupported compression method #{method} for #{name}"
+                    end
+          files << [name, content.force_encoding(Encoding::UTF_8).scrub]
+        end
+
+        files
+      end
     end
   end
 end

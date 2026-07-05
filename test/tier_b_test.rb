@@ -93,10 +93,61 @@ class ParsersTest < Minitest::Test
   end
 
   def test_nordvpn_servers_json
-    body = JSON.generate([{ status: "online", station: "194.99.105.99", ipv6_station: "",
-                            ips: [{ ip: { ip: "194.99.105.99" } }] },
-                          { status: "offline", station: "192.0.2.55" }])
+    body = JSON.generate({ servers: [{ status: "online", station: "194.99.105.99", station_ipv6: "",
+                                       ips: [{ ip: { ip: "194.99.105.99" } }] },
+                                     { status: "offline", station: "192.0.2.55" }] })
     assert_equal ["194.99.105.99"], P.parse("nordvpn_servers_json", body)
+  end
+
+  def test_privado_servers_json
+    body = JSON.generate({ servers: [{ ip: "91.148.247.156", hostname: "rs.example" },
+                                     { hostname: "missing-ip.example" }] })
+    assert_equal ["91.148.247.156"], P.parse("privado_servers_json", body)
+  end
+
+  def test_leap_eip_service_json
+    body = JSON.generate({ gateways: [{ ip_address: "204.13.164.252", host: "vpn01-sea.riseup.net" }] })
+    assert_equal ["204.13.164.252"], P.parse("leap_eip_service_json", body)
+  end
+
+  def test_surfshark_clusters_json
+    body = JSON.generate([{ connectionName: "al-tia.prod.surfshark.com" }])
+    assert_equal ["al-tia.prod.surfshark.com"], P.parse("surfshark_clusters_json", body)
+  end
+
+  def test_ovpn_zip_remote_hosts
+    zip = stored_zip(
+      "one.ovpn" => "client\nremote vpn1.example.com 1194\n",
+      "nested/two.ovpn" => "remote 203.0.113.10 443 tcp\n",
+      "README.txt" => "remote ignored.example.com 1194\n"
+    )
+    assert_equal ["vpn1.example.com", "203.0.113.10"], P.parse("ovpn_zip_remote_hosts", zip)
+  end
+
+  def test_vpnbook_html_hosts
+    body = '<a href="/freevpn/openvpn">us16.vpnbook.com</a> www.vpnbook.com ca149.vpnbook.com'
+    assert_equal ["us16.vpnbook.com", "ca149.vpnbook.com"], P.parse("vpnbook_html_hosts", body)
+  end
+
+  def test_html_table_hostnames
+    body = "<tr><td>Australia</td><td>Sydney</td><td>au-stream.jumptoserver.com</td></tr>"
+    assert_equal ["au-stream.jumptoserver.com"], P.parse("html_table_hostnames", body)
+  end
+
+  def test_vpnsecure_locations_html
+    body = <<~HTML
+      <dt>
+        <div class="icon-flag"></div>
+        au1
+        <span class="status status--up">up</span>
+      </dt>
+      <dt>
+        <div class="icon-flag"></div>
+        us4
+        <span class="status status--down">down</span>
+      </dt>
+    HTML
+    assert_equal ["au1.isponeder.com"], P.parse("vpnsecure_locations_html", body)
   end
 
   def test_vpngate_csv
@@ -109,6 +160,28 @@ class ParsersTest < Minitest::Test
     assert_raises(P::ParseError) { P.parse("mullvad_relays_json", "[]") }
     assert_raises(P::ParseError) { P.parse("aws_json", "not json") }
     assert_raises(P::ParseError) { P.parse("nope_parser", "x") }
+  end
+
+  private
+
+  def stored_zip(entries)
+    local = +"".b
+    central = +"".b
+    entries.each do |name, content|
+      name = name.b
+      content = content.b
+      crc = Zlib.crc32(content)
+      offset = local.bytesize
+      local << ["PK\x03\x04".b, 20, 0, 0, 0, 0, crc, content.bytesize, content.bytesize,
+                name.bytesize, 0].pack("a4vvvvvVVVvv")
+      local << name << content
+      central << ["PK\x01\x02".b, 20, 20, 0, 0, 0, 0, crc, content.bytesize, content.bytesize,
+                  name.bytesize, 0, 0, 0, 0, 0, offset].pack("a4vvvvvvVVVvvvvvVV")
+      central << name
+    end
+    eocd = ["PK\x05\x06".b, 0, 0, entries.length, entries.length, central.bytesize,
+            local.bytesize, 0].pack("a4vvvvVVv")
+    local << central << eocd
   end
 end
 
@@ -240,5 +313,45 @@ class TierBExecutorTest < Minitest::Test
     assert execute
     assert_equal :hosting, OpenASN.lookup("13.64.10.10").verdict
     assert_equal "azure", OpenASN.lookup("13.64.10.10").provider
+  end
+
+  def test_post_form_sources
+    configure do |c|
+      c.tier_b = { apple_relay: true, tor: false, clouds: false,
+                   vpn_providers: false, zscaler: false, nazgul_mixed: false }
+    end
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "apple_private_relay", url: APPLE, method: "POST",
+                  form: { action: "vpn_servers", protocol: "udp" },
+                  parser: "plain_cidr_per_line", maps_to: "relay",
+                  provider: "Post Relay", cadence_hours: 0 }]
+    }))
+    stub_request(:post, APPLE)
+      .with(body: "action=vpn_servers&protocol=udp")
+      .to_return(status: 200, body: "1.0.30.0/24\n")
+
+    assert execute
+    assert_equal "Post Relay", OpenASN.lookup("1.0.30.10").provider
+  end
+
+  def test_resolves_manifest_hostnames_when_explicitly_enabled
+    old_resolver = OpenASN::TierB.dns_resolver
+    OpenASN::TierB.dns_resolver = ->(host) { host == "relay.example.test" ? ["1.0.30.10"] : [] }
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "apple_private_relay", url: APPLE,
+                  parser: "plain_cidr_per_line", maps_to: "relay",
+                  provider: "Test Relay", cadence_hours: 0,
+                  resolve_hostnames: true }]
+    }))
+    stub_request(:get, APPLE).to_return(status: 200, body: "relay.example.test\n")
+
+    assert execute
+    r = OpenASN.lookup("1.0.30.10")
+    assert_equal :relay, r.verdict
+    assert_equal "Test Relay", r.provider
+  ensure
+    OpenASN::TierB.dns_resolver = old_resolver
   end
 end

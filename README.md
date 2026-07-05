@@ -148,13 +148,13 @@ OpenASN.configure do |config|
   config.pin_version  = nil       # e.g. "2026-07-04" to pin a dated data release
   config.tier_b       = { apple_relay: true, tor: true, clouds: true,
                           vpn_providers: true, vpn_heavy: false,
-                          public_relays: false, zscaler: false,
+                          vpn_dns: false, public_relays: false, zscaler: false,
                           nazgul_mixed: false }
   config.logger       = Rails.logger
 end
 ```
 
-`vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, and Windscribe. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `public_relays: true` opts into volunteer relay networks such as VPN Gate, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays.
+`vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, Windscribe, PrivadoVPN, and RiseupVPN. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `vpn_dns: true` opts into provider-published hostnames resolved by your server's DNS at update time, covering sources such as Surfshark, IPVanish, PrivateVPN, PureVPN, TorGuard, FastestVPN, and VPNSecure; this is useful but intentionally off by default because DNS answers can vary by resolver/vantage. `public_relays: true` opts into volunteer/free relay networks such as VPN Gate and VPNBook, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays.
 
 ### Updates
 
