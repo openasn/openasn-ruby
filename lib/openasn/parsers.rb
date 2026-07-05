@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "rexml/document"
 require "zlib"
 
 module OpenASN
@@ -213,6 +214,20 @@ module OpenASN
       data = JSON.parse(body)
       tokens = (data["gateways"] || []).filter_map { |gateway| gateway["ip_address"] }
       raise ParseError, "leap_eip_service_json: no gateway IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "wlvpn_server_list_xml" do |body|
+      doc = REXML::Document.new(body)
+      tokens = []
+      doc.elements.each("//server") do |server|
+        next unless server.attributes["visible"].to_s == "1" && server.attributes["status"].to_s == "1"
+
+        ip = server.attributes["ip"].to_s.strip
+        tokens << ip unless ip.empty?
+      end
+      raise ParseError, "wlvpn_server_list_xml: no visible active server IPs — schema changed?" if tokens.empty?
 
       tokens.uniq
     end

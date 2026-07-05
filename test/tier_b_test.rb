@@ -175,6 +175,18 @@ class ParsersTest < Minitest::Test
     assert_equal ["au1.isponeder.com"], P.parse("vpnsecure_locations_html", body)
   end
 
+  def test_wlvpn_server_list_xml
+    body = <<~XML
+      <wlvpnserverList>
+        <server name="nyc-a01.wlvpn.com" ip="173.255.160.132" status="1" visible="1" />
+        <server name="down.wlvpn.com" ip="203.0.113.9" status="0" visible="1" />
+        <server name="hidden.wlvpn.com" ip="203.0.113.10" status="1" visible="0" />
+        <server name="duplicate.wlvpn.com" ip="173.255.160.132" status="1" visible="1" />
+      </wlvpnserverList>
+    XML
+    assert_equal ["173.255.160.132"], P.parse("wlvpn_server_list_xml", body)
+  end
+
   def test_vpngate_csv
     body = "*vpn_servers\n#HostName,IP,...\npublic-vpn-1,219.100.37.224,score,...\n"
     assert_equal ["219.100.37.224"], P.parse("vpngate_csv", body)

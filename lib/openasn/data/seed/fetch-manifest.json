@@ -216,6 +216,17 @@
       "notes": "First-party LEAP/Bitmask provider API for RiseupVPN. OONI's RiseupVPN test documents that this provider API returns VPN gateway IP addresses and capabilities (https://github.com/ooni/spec/blob/master/nettests/ts-026-riseupvpn.md). Parser reads gateways[].ip_address exact IPs."
     },
     {
+      "id": "wlvpn_server_list",
+      "url": "https://api.wlvpn.com/v2/list/wlvpnserverList.xml",
+      "parser": "wlvpn_server_list_xml",
+      "maps_to": "vpn",
+      "provider": "WLVPN",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "First-party WLVPN/IPVanish white-label server API. WLVPN's site says it is a white-label VPN solution powered by IPVanish and part of VIPRE Security Group, a Ziff Davis company (https://wlvpn.com/about-wlvpn/). Parser keeps only server elements with visible=1/status=1 and reads exact ip attributes. Provider attribution is intentionally WLVPN backend infrastructure, not a reseller brand such as Spaceship/FastVPN or Namecheap FastVPN."
+    },
+    {
       "id": "surfshark_generic",
       "url": "https://api.surfshark.com/v4/server/clusters/generic",
       "parser": "surfshark_clusters_json",

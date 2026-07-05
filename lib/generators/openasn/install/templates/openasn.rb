@@ -26,7 +26,7 @@ OpenASN.configure do |config|
   #   apple_relay: true,     # iCloud Private Relay → :relay (real users! never block)
   #   tor: true,             # Tor Project exits    → :tor_exit
   #   clouds: true,          # AWS/GCP/Azure/OCI/DO/Linode/Vultr → :hosting (+provider)
-  #   vpn_providers: true,   # exact VPN provider IP lists → :vpn (+provider)
+  #   vpn_providers: true,   # exact VPN provider/backend IP lists → :vpn (+provider)
   #   vpn_heavy: false,      # large/fragile provider APIs (NordVPN) — opt-in
   #   vpn_dns: false,        # provider hostnames resolved locally (Surfshark/IPVanish/FastestVPN/VPNSecure/TunnelBear/StrongVPN/...) - opt-in
   #   public_relays: false,  # volunteer/free public VPN relays (VPN Gate/VPNBook) — opt-in
