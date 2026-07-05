@@ -339,6 +339,30 @@ module OpenASN
       tokens.uniq
     end
 
+    register "ovpn_status_servers_json" do |body|
+      data = JSON.parse(body)
+      rows = data["data"]
+      raise ParseError, "ovpn_status_servers_json: expected data array" unless rows.is_a?(Array)
+
+      tokens = rows.filter_map do |server|
+        next if server["online"] == false
+
+        server["ip"]
+      end
+      raise ParseError, "ovpn_status_servers_json: no online server IPs — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
+    register "slickvpn_locations_html" do |body|
+      tokens = body.scan(%r{<a\b[^>]*href=["']https://members\.newsdemon\.com/vpn/2025/[^"']+\.ovpn["'][^>]*>(.*?)</a>}im).flat_map do |label|
+        label.first.to_s.gsub(/<[^>]*>/, " ").scan(/\bgw\d+\.[a-z0-9.-]+\.slickvpn\.com\b/i)
+      end.map(&:downcase)
+      raise ParseError, "slickvpn_locations_html: no SlickVPN config-linked hostnames — schema changed?" if tokens.empty?
+
+      tokens.uniq
+    end
+
     register "freevpn_us_status_html" do |body|
       allowed = {
         "openvpn" => /\Aovpn-[a-z0-9-]+\.vpnv\.cc\z/i,

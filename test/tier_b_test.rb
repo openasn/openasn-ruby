@@ -198,6 +198,24 @@ class ParsersTest < Minitest::Test
     assert_equal ["116.203.253.222"], P.parse("worldvpn_servers_html", body)
   end
 
+  def test_ovpn_status_servers_json
+    body = JSON.generate({
+      data: [
+        { name: "VPN26", ip: "217.138.204.35", online: true },
+        { name: "VPN27", ip: "192.0.2.10", online: false }
+      ]
+    })
+    assert_equal ["217.138.204.35"], P.parse("ovpn_status_servers_json", body)
+  end
+
+  def test_slickvpn_locations_html
+    body = <<~HTML
+      <p>Amsterdam - <a href="https://members.newsdemon.com/vpn/2025/SV-2025-Amsterdam.ovpn">gw2.ams3.slickvpn.com</a></p>
+      <p>Ignored - <a href="https://example.com/SV-2025-Fake.ovpn">gw1.fake.slickvpn.com</a></p>
+    HTML
+    assert_equal ["gw2.ams3.slickvpn.com"], P.parse("slickvpn_locations_html", body)
+  end
+
   def test_freevpn_us_status_html
     body = <<~HTML
       <tr data-type="openvpn" data-host="ovpn-ee-1.vpnv.cc"></tr>
