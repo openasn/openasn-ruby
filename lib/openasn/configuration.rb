@@ -48,7 +48,7 @@ module OpenASN
     #   nazgul_mixed   → nazgul_mixed               (flag only, never :vpn)
     attr_accessor :tier_b
 
-    # Pin data to a dated release tag (e.g. "2026-07-04") instead of the
+    # Pin data to a dated release tag (e.g. "v2026.07.05") instead of the
     # rolling latest. For reproducible environments and gradual rollouts.
     attr_accessor :pin_version
 
