@@ -255,7 +255,11 @@ module OpenASN
 
     register "ovpn_zip_remote_hosts" do |body|
       tokens = unzip_files(body).flat_map do |name, content|
-        next [] unless name.downcase.end_with?(".ovpn")
+        # TunnelBear's first-party Linux ZIP currently includes a few valid
+        # OpenVPN configs with a defensive ".ovpn.txt" suffix. Accept only
+        # the two explicit OpenVPN suffixes so README/license text cannot
+        # accidentally become source data.
+        next [] unless name.downcase.end_with?(".ovpn", ".ovpn.txt")
 
         openvpn_remote_hosts(content)
       end
@@ -297,6 +301,12 @@ module OpenASN
         end
       end
 
+      # Deflate expands up to ~1000:1 and these archives arrive from remote
+      # servers: cap inflated output so a hostile/compromised archive costs
+      # at most bounded memory (ParseError -> keep-stale), never an OOM.
+      # Real provider config archives inflate to single-digit MB.
+      MAX_INFLATED_BYTES = 64 * 1024 * 1024
+
       # Minimal ZIP reader for first-party OpenVPN config archives. We keep
       # this in stdlib Ruby instead of adding rubyzip so the gem stays
       # dependency-free. It supports the two methods seen in provider archives:
@@ -309,6 +319,7 @@ module OpenASN
         cd_offset = bytes.byteslice(eocd + 16, 4).unpack1("V")
         pos = cd_offset
         files = []
+        total_inflated = 0
 
         entries.times do
           raise ParseError, "zip: malformed central directory" unless bytes.byteslice(pos, 4) == "PK\x01\x02".b
@@ -331,20 +342,34 @@ module OpenASN
           compressed = bytes.byteslice(data_start, compressed_size)
           content = case method
                     when 0 then compressed
-                    when 8
-                      inflater = Zlib::Inflate.new(-Zlib::MAX_WBITS)
-                      begin
-                        inflater.inflate(compressed) + inflater.finish
-                      ensure
-                        inflater.close
-                      end
+                    when 8 then bounded_inflate(compressed, name)
                     else
                       raise ParseError, "zip: unsupported compression method #{method} for #{name}"
                     end
+          total_inflated += content.bytesize
+          raise ParseError, "zip: archive inflates past #{MAX_INFLATED_BYTES} bytes - refusing" if total_inflated > MAX_INFLATED_BYTES
+
           files << [name, content.force_encoding(Encoding::UTF_8).scrub]
         end
 
         files
+      end
+
+      # Inflate in chunks, aborting the moment cumulative output crosses the
+      # cap; the bomb never gets to materialize in memory.
+      def bounded_inflate(compressed, name)
+        inflater = Zlib::Inflate.new(-Zlib::MAX_WBITS)
+        out = +"".b
+        begin
+          inflater.inflate(compressed) do |chunk|
+            out << chunk
+            raise ParseError, "zip: #{name} inflates past #{MAX_INFLATED_BYTES} bytes - refusing" if out.bytesize > MAX_INFLATED_BYTES
+          end
+          out << inflater.finish unless inflater.finished?
+        ensure
+          inflater.close
+        end
+        out
       end
     end
   end

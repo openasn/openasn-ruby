@@ -353,6 +353,18 @@
       "notes": "Opt-in DNS-expanded source: VPNSecure's first-party locations page publishes per-server host labels and status. Parser keeps only hosts marked status--up and expands them to *.isponeder.com hostnames for local DNS resolution."
     },
     {
+      "id": "tunnelbear_openvpn",
+      "url": "https://tunnelbear.s3.amazonaws.com/support/linux/openvpn.zip",
+      "parser": "ovpn_zip_remote_hosts",
+      "maps_to": "vpn",
+      "provider": "TunnelBear",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "resolve_hostnames": true,
+      "notes": "Opt-in DNS-expanded source: TunnelBear's first-party Linux setup article links this public OpenVPN ZIP. Parser extracts exact remote hostnames, including provider files suffixed .ovpn.txt; clients resolve them locally."
+    },
+    {
       "id": "vpnbook_openvpn",
       "url": "https://www.vpnbook.com/freevpn/openvpn",
       "parser": "vpnbook_html_hosts",

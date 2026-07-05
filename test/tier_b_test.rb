@@ -115,13 +115,32 @@ class ParsersTest < Minitest::Test
     assert_equal ["al-tia.prod.surfshark.com"], P.parse("surfshark_clusters_json", body)
   end
 
+  def test_zip_bomb_is_refused_with_bounded_memory
+    # ~66MB of zeros deflates to ~64KB; the inflate cap must trip before the
+    # payload materializes (keep-stale semantics downstream, never an OOM).
+    zeros = "\0".b * (66 * 1024 * 1024)
+    deflated = Zlib::Deflate.new(Zlib::DEFAULT_COMPRESSION, -Zlib::MAX_WBITS)
+                            .deflate(zeros, Zlib::FINISH)
+    crc = Zlib.crc32(zeros)
+    name = "bomb.ovpn".b
+    local = ["PK\x03\x04".b, 20, 0, 0, 8, 0, crc, deflated.bytesize, zeros.bytesize,
+             name.bytesize, 0].pack("a4vvvvvVVVvv") + name + deflated
+    central = ["PK\x01\x02".b, 20, 20, 0, 8, 0, 0, crc, deflated.bytesize, zeros.bytesize,
+               name.bytesize, 0, 0, 0, 0, 0, 0].pack("a4vvvvvvVVVvvvvvVV") + name
+    eocd = ["PK\x05\x06".b, 0, 0, 1, 1, central.bytesize, local.bytesize, 0].pack("a4vvvvVVv")
+
+    error = assert_raises(P::ParseError) { P.parse("ovpn_zip_remote_hosts", local + central + eocd) }
+    assert_match(/inflates past/, error.message)
+  end
+
   def test_ovpn_zip_remote_hosts
     zip = stored_zip(
       "one.ovpn" => "client\nremote vpn1.example.com 1194\n",
       "nested/two.ovpn" => "remote 203.0.113.10 443 tcp\n",
+      "provider/three.ovpn.txt" => "remote vpn3.example.com 443\n",
       "README.txt" => "remote ignored.example.com 1194\n"
     )
-    assert_equal ["vpn1.example.com", "203.0.113.10"], P.parse("ovpn_zip_remote_hosts", zip)
+    assert_equal ["vpn1.example.com", "203.0.113.10", "vpn3.example.com"], P.parse("ovpn_zip_remote_hosts", zip)
   end
 
   def test_vpnbook_html_hosts

@@ -39,6 +39,7 @@ module OpenASN
     #                    (exact provider-attributed VPN exit/server IPs)
     #   vpn_heavy      → nordvpn                    (large/fragile provider API)
     #   vpn_dns        → surfshark ipvanish privatevpn purevpn torguard fastestvpn vpnsecure
+    #                    tunnelbear
     #                    (provider hostnames resolved locally; opt-in)
     #   public_relays  → vpngate vpnbook            (volunteer/free public VPN relays)
     #   zscaler        → zscaler                    (:enterprise_gateway ranges)
@@ -89,7 +90,7 @@ module OpenASN
       vpn_heavy: %w[nordvpn_servers],
       vpn_dns: %w[surfshark_generic surfshark_static surfshark_obfuscated ipvanish_openvpn
                   privatevpn_openvpn purevpn_openvpn torguard_openvpn_tcp torguard_openvpn_udp
-                  fastestvpn_tcp fastestvpn_udp vpnsecure_locations],
+                  fastestvpn_tcp fastestvpn_udp vpnsecure_locations tunnelbear_openvpn],
       public_relays: %w[vpngate vpnbook_openvpn],
       nazgul_mixed: %w[nazgul_mixed]
     }.freeze

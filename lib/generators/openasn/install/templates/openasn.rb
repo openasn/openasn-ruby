@@ -28,7 +28,7 @@ OpenASN.configure do |config|
   #   clouds: true,          # AWS/GCP/Azure/OCI/DO/Linode/Vultr → :hosting (+provider)
   #   vpn_providers: true,   # exact VPN provider IP lists → :vpn (+provider)
   #   vpn_heavy: false,      # large/fragile provider APIs (NordVPN) — opt-in
-  #   vpn_dns: false,        # provider hostnames resolved locally (Surfshark/IPVanish/FastestVPN/VPNSecure/…) — opt-in
+  #   vpn_dns: false,        # provider hostnames resolved locally (Surfshark/IPVanish/FastestVPN/VPNSecure/TunnelBear/...) - opt-in
   #   public_relays: false,  # volunteer/free public VPN relays (VPN Gate/VPNBook) — opt-in
   #   zscaler: false,        # extra :enterprise_gateway ranges (ASN flags already cover most)
   #   nazgul_mixed: false    # broad "high-risk hosting" flag — NOT a VPN signal; opt-in

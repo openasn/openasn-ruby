@@ -154,7 +154,7 @@ OpenASN.configure do |config|
 end
 ```
 
-`vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, Windscribe, PrivadoVPN, and RiseupVPN. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `vpn_dns: true` opts into provider-published hostnames resolved by your server's DNS at update time, covering sources such as Surfshark, IPVanish, PrivateVPN, PureVPN, TorGuard, FastestVPN, and VPNSecure; this is useful but intentionally off by default because DNS answers can vary by resolver/vantage. `public_relays: true` opts into volunteer/free relay networks such as VPN Gate and VPNBook, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays.
+`vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, Windscribe, PrivadoVPN, and RiseupVPN. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `vpn_dns: true` opts into provider-published hostnames resolved by your server's DNS at update time, covering sources such as Surfshark, IPVanish, PrivateVPN, PureVPN, TorGuard, FastestVPN, VPNSecure, and TunnelBear; this is useful but intentionally off by default because DNS answers can vary by resolver/vantage. `public_relays: true` opts into volunteer/free relay networks such as VPN Gate and VPNBook, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays.
 
 ### Updates
 
@@ -216,7 +216,7 @@ Measured on the bundled real dataset (433k+ IPv4 ranges, 125k+ IPv6, full overla
 | `:packed` (default) | ~15µs | ~68k/sec/core | ~11MB data |
 | `:arrays` | ~9µs | ~108k/sec/core | ~40MB data |
 
-(Apple M-series numbers; GitHub's shared CI runners measure ~24µs packed / ~12µs arrays. CI asserts a generous 100µs ceiling as a regression tripwire.) Run `rake bench` to measure on your hardware.
+(Apple M-series, canonical-data only; GitHub's shared CI runners measure ~24µs packed / ~12µs arrays. CI asserts a generous 100µs ceiling as a regression tripwire.) Enabling many Tier B overlays adds a few µs per active overlay; with all defaults loaded (~11 overlays) a full lookup is ~35µs on Apple Silicon, still tens of thousands per second per core. Run `rake bench` to measure on your hardware.
 
 ## Data provenance & licensing
 
