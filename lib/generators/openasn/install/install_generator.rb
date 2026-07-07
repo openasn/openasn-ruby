@@ -12,6 +12,14 @@ module Openasn
     class InstallGenerator < Rails::Generators::Base
       source_root File.expand_path("templates", __dir__)
 
+      RECURRING_JOB = <<~YAML
+        # Added by `rails g openasn:install` — daily IP-origin data refresh
+        openasn_update:
+          class: OpenASN::UpdateJob
+          queue: default
+          schedule: every day at 4:12am UTC
+      YAML
+
       def create_initializer
         template "openasn.rb", "config/initializers/openasn.rb"
       end
@@ -30,15 +38,8 @@ module Openasn
 
         # 4:12am UTC: after the nightly data build (03:17 UTC) completes,
         # off-hour to be kind to the Tier B upstreams.
-        append_to_file recurring, <<~YAML
-
-          # Added by `rails g openasn:install` — daily IP-origin data refresh
-          production:
-            openasn_update:
-              class: OpenASN::UpdateJob
-              queue: default
-              schedule: every day at 4:12am UTC
-        YAML
+        recurring_path = File.expand_path(recurring, destination_root)
+        File.write(recurring_path, recurring_with_openasn_job(File.read(recurring_path)))
       end
 
       def display_post_install_message
@@ -62,6 +63,27 @@ module Openasn
         say "     a residential verdict is absence of evidence, not proof of innocence,"
         say "     and :relay/:cgnat/:mobile are real humans — never hard-block them.", :yellow
         say ""
+      end
+
+      private
+
+      def recurring_with_openasn_job(contents)
+        production = contents.match(/^production:\s*$/)
+        return "#{contents.rstrip}\n\nproduction:\n#{indent(RECURRING_JOB, 2)}" unless production
+
+        insert_at = next_environment_index(contents, production.end(0)) || contents.length
+        "#{contents[0...insert_at].rstrip}\n\n#{indent(RECURRING_JOB, 2)}#{contents[insert_at..]}"
+      end
+
+      def next_environment_index(contents, offset)
+        tail = contents[offset..]
+        match = tail.match(/\n(?=\S[^:\n]*:\s*$)/)
+        match && offset + match.begin(0)
+      end
+
+      def indent(text, spaces)
+        prefix = " " * spaces
+        text.lines.map { |line| line == "\n" ? line : "#{prefix}#{line}" }.join
       end
     end
   end

@@ -59,6 +59,11 @@ rails generate openasn:install
 
 The generator creates `config/initializers/openasn.rb` (documented defaults) and, if you're on Solid Queue, schedules the daily `OpenASN::UpdateJob` in `config/recurring.yml`. **No migrations, no database** — data lives in `storage/openasn/` as memory-mapped-style packed files.
 
+If you wire the job yourself, schedule it after the OpenASN data build
+publishes at **03:17 UTC**. The generator uses `every day at 4:12am UTC` on
+purpose; local time zones with daylight saving can drift before the UTC build
+and fetch yesterday's release.
+
 Not on Rails? `OpenASN.lookup` works anywhere Ruby ≥ 3.1 runs; schedule `OpenASN.update!` daily with cron/whenever.
 
 ## The API

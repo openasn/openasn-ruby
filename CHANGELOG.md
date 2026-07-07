@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `rails generate openasn:install` now inserts `OpenASN::UpdateJob` under an
+  existing `production:` entry in `config/recurring.yml` instead of appending
+  a duplicate top-level key that can make YAML parsers drop existing jobs.
+- README scheduling guidance now calls out that manual update jobs should run
+  after the 03:17 UTC data build, using UTC to avoid daylight-saving drift.
+
 ## [0.3.0] - 2026-07-07
 
 Ergonomics release, driven by dogfooding the analytics/enrichment use case
