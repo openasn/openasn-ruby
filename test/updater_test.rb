@@ -134,8 +134,8 @@ class UpdaterTest < Minitest::Test
   end
 
   def test_pin_version_changes_release_url
-    configure { |c| c.pin_version = "2026-07-04" }
-    pinned = "https://github.com/openasn/openasn/releases/download/2026-07-04/"
+    configure { |c| c.pin_version = "v2026.07.04" }
+    pinned = "https://github.com/openasn/openasn/releases/download/v2026.07.04/"
     stub = stub_request(:get, "#{pinned}manifest.json").to_return(status: 500)
     OpenASN.update!
     assert_requested(stub)
