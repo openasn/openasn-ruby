@@ -11,6 +11,7 @@
 result = OpenASN.lookup(request.remote_ip)
 
 result.verdict          # => :residential_isp
+result.label            # => "Residential ISP" — human-readable, for admin UIs & logs
 result.infrastructure?  # => false  (true only for :hosting / :vpn / :tor_exit)
 result.likely_human?    # => true   (:residential_isp, :mobile, :relay, :cgnat, :enterprise_gateway)
 result.asn              # => 3352
@@ -18,10 +19,10 @@ result.as_org           # => "TELEFONICA DE ESPANA S.A.U."
 result.sources          # => [:asn_category]  — every verdict is auditable
 ```
 
-It's the missing first line of defense for signups, checkouts, and abuse-prone endpoints: the signal that today costs $79–$200/month from commercial IP-intelligence APIs, as free, open, auditable data — compiled nightly from legally clean sources by the [OpenASN data project](https://github.com/openasn/openasn), with a data seed bundled right in the gem so it works on first boot, offline.
+It answers, at zero marginal cost, the question every product eventually asks: **where do my signups, logins, and checkouts actually come from?** Enrich your admin panel, analytics, and audit trails with network origin — and if you ever decide to *act* on the signal, the same verdict drives step-up verification or rate limits. It's the data that costs $79–$200/month from commercial IP-intelligence APIs, as free, open, auditable data — compiled nightly from legally clean sources by the [OpenASN data project](https://github.com/openasn/openasn), with a data seed bundled right in the gem so it works on first boot, offline.
 
 > [!IMPORTANT]
-> **What this is NOT.** A clean or `:residential_isp` verdict is **absence of evidence, not proof of innocence**. Residential proxies — malicious traffic exiting through real home IPs — are structurally hard to detect offline, and OpenASN does not claim to detect them. `:vpn`, `:hosting`, and `:tor_exit` are high-confidence; treat everything else as a signal, not a sentence. **Never hard-block `:relay`, `:cgnat`, or `:mobile` — those are real people.** OpenASN is a first line of defense, not a fraud engine.
+> **What this is NOT.** A clean or `:residential_isp` verdict is **absence of evidence, not proof of innocence**. Residential proxies — malicious traffic exiting through real home IPs — are structurally hard to detect offline, and OpenASN does not claim to detect them. `:vpn`, `:hosting`, and `:tor_exit` are high-confidence; treat everything else as a signal, not a sentence. **Never hard-block `:relay`, `:cgnat`, or `:mobile` — those are real people.** OpenASN tells you what the network *is*; it is not a fraud engine, and a verdict is a fact to weigh, never a sentence to execute.
 
 ## How it works
 
@@ -68,9 +69,14 @@ Not on Rails? `OpenASN.lookup` works anywhere Ruby ≥ 3.1 runs; schedule `OpenA
 r = OpenASN.lookup("146.70.107.100")   # aliases: OpenASN.check, OpenASN.[]
 # Never nil. Raises OpenASN::InvalidIPError (an ArgumentError) on garbage input.
 
+r = OpenASN.try_lookup(user.signup_ip) # nil-safe variant: nil/blank/garbage in,
+                                       # nil out — right for views and analytics
+                                       # over historical data
+
 r.verdict         # one of: :residential_isp :mobile :business :hosting :vpn
                   #         :tor_exit :relay :enterprise_gateway :education
                   #         :government :cgnat :private :unknown
+r.label           # "VPN" — the verdict as a short human-readable string
 r.infrastructure? # :hosting | :vpn | :tor_exit — the honest, high-confidence boolean
 r.likely_human?   # :residential_isp | :mobile | :relay | :cgnat | :enterprise_gateway
 r.vpn? r.hosting? r.tor? r.relay? r.mobile? r.private? r.cgnat?
@@ -81,6 +87,9 @@ r.category        # "hosting"          (raw upstream category)
 r.network_role    # "major_transit"    (raw upstream routing role)
 r.provider        # "aws" | "ProtonVPN" | "iCloud Private Relay" | nil (overlay attribution)
 r.sources         # [:x4b_vpn] — which data layer decided; every verdict is auditable
+r.flag_names      # [:vpn_provider, :bad_asn] — ASN-level signals, decoded to names
+r.bad_asn?        # ASN is in brianhama/bad-asn-list (infrastructure signal, not an accusation)
+r.flag?(:cdn)     # named check for any flag in r.flag_names' vocabulary
 r.context_flags   # [:cloudflare_range] — context that never decides verdicts
 r.unrouted?       # true when no ASN announces this IP
 r.flags           # raw u16 for power users (see the data project's FORMAT.md)
@@ -103,13 +112,14 @@ OpenASN returns one object, but its fields answer different questions:
 | `sources` | Which rule/data layer decided the verdict | Best debugging field. Log it. |
 | `provider` | Provider attribution from an exact overlay hit (`"aws"`, `"azure"`, `"ProtonVPN"`, ...) | Display/log it when present; nil is normal. |
 | `context_flags` | Extra context that never decides the verdict | Useful for policy experiments; do not block solely on it. |
-| `flags` | Packed low-level artifact bits | Power-user/debug field; prefer `verdict` and `sources` in app code. |
+| `flag_names` | ASN-level signals, decoded (`:bad_asn`, `:vpn_provider`, `:mobile_carrier`, `:enterprise_gw`, `:cdn`, `:hosting_extra`) | Display/log them; `bad_asn?` and `flag?(:name)` are the sugar. |
+| `flags` | Packed low-level artifact bits | Wire detail; prefer `flag_names` in app code. |
 
 Common examples:
 
 - A DIGI Spain home IP is usually `category: "isp"` and `verdict: :residential_isp`. That is expected: `category` describes the ASN; `verdict` is OpenASN's safer application-level label.
 - An Amazon IP may be `category: "hosting"`, `sources: [:x4b_dc]`, and with Tier B enabled `provider: "aws"`. The verdict remains `:hosting`; Tier B only improves attribution.
-- `bad_asn` is not an accusation and not a verdict. It means the ASN appears in `brianhama/bad-asn-list`, a curated MIT-licensed hosting/cloud/colo ASN list. When that bit decides classification, `sources` includes `:asn_bad_asn`.
+- `bad_asn?` is not an accusation and not a verdict. It means the ASN appears in `brianhama/bad-asn-list`, a curated MIT-licensed hosting/cloud/colo ASN list. When that signal decides classification, `sources` includes `:asn_bad_asn`.
 - `:residential_isp` means "known eyeball ISP, no stronger infrastructure signal found." It does **not** mean "safe user."
 
 ### Verdict cheat sheet
@@ -179,12 +189,16 @@ request.env["openasn.result"]&.infrastructure?
 > [!WARNING]
 > **The classic integration bug:** behind a proxy/CDN without trusted-proxy configuration, you'll classify your own load balancer on every request (everything comes back `:private` or your host's datacenter). Inside Rails the middleware uses `remote_ip` semantics (honors `config.action_dispatch.trusted_proxies`); make sure the real client IP reaches your app — e.g. with the `cloudflare-rails` gem when behind Cloudflare.
 
-## Recommended rollout: shadow mode first
+## Recommended rollout: enrich first, act later (maybe never)
 
-Log for two weeks. Then decide. (This is how we dogfood it.)
+Start where the value is certain and the risk is zero: **visibility**. Put the verdict next to every IP your team already looks at. For many apps that's the whole integration — and it's how we dogfood it ourselves.
 
 ```ruby
-# 1. SHADOW — measure, block nothing:
+# 1. ENRICH — pure analytics, blocks nothing, breaks nothing:
+#    surface origin in your admin panel and audit trails…
+OpenASN.try_lookup(user.signup_ip)&.label   # "Residential ISP" / "VPN" / "Hosting / datacenter"
+
+#    …and/or log it on the flows you care about:
 class RegistrationsController < ApplicationController
   def create
     Rails.logger.info(openasn: OpenASN.lookup(request.remote_ip).to_h.merge(flow: "signup"))
@@ -192,8 +206,9 @@ class RegistrationsController < ApplicationController
   end
 end
 
-# 2. Weeks later, with YOUR false-positive data in hand, act — prefer
-#    step-up verification (email confirm, captcha, phone) over hard blocks:
+# 2. If (and only if) your OWN data says you have an abuse problem worth the
+#    friction, act — prefer step-up verification (email confirm, captcha,
+#    phone) over hard blocks:
 Rack::Attack.blocklist("openasn: infrastructure on signup") do |req|
   req.post? && req.path == "/signup" && OpenASN.lookup(req.ip).infrastructure?
 end

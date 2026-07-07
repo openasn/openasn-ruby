@@ -121,10 +121,43 @@ class ResultTest < Minitest::Test
                             sources: [:x4b_vpn], flags: 0x0202)
     assert r.frozen?
     h = r.to_h
+    # Append-only contract: adding a key is fine (flag_names, 0.3.0);
+    # removing or reordering existing keys is a breaking change.
     assert_equal %i[ip verdict infrastructure likely_human asn as_org category
-                    network_role provider sources flags context_flags unrouted], h.keys
+                    network_role provider sources flags flag_names context_flags
+                    unrouted], h.keys
     assert_equal :vpn, h[:verdict]
     assert h[:infrastructure]
+  end
+
+  def test_flag_names_decode_the_bitfield_and_bad_asn_reads_plainly
+    flags = OpenASN::BinaryFormat::FLAG_BAD_ASN | OpenASN::BinaryFormat::FLAG_CDN
+    r = OpenASN::Result.new(ip: "192.0.2.1", verdict: :hosting, flags: flags)
+    assert_equal %i[bad_asn cdn], r.flag_names
+    assert r.bad_asn?
+    assert r.flag?(:cdn)
+    refute r.flag?(:vpn_provider)
+    assert_equal %i[bad_asn cdn], r.to_h[:flag_names]
+
+    clean = build(:residential_isp)
+    assert_empty clean.flag_names
+    refute clean.bad_asn?
+  end
+
+  def test_every_verdict_has_a_label
+    OpenASN::Result::VERDICTS.each do |v|
+      label = build(v).label
+      assert_kind_of String, label
+      refute_empty label
+    end
+  end
+
+  def test_try_lookup_returns_nil_on_junk_and_a_result_on_real_ips
+    assert_nil OpenASN.try_lookup(nil)
+    assert_nil OpenASN.try_lookup("")
+    assert_nil OpenASN.try_lookup("   ")
+    assert_nil OpenASN.try_lookup("not-an-ip")
+    assert_equal :hosting, OpenASN.try_lookup("8.8.8.8").verdict # bundled seed
   end
 end
 

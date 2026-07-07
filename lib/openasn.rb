@@ -72,6 +72,18 @@ module OpenASN
     alias check lookup
     alias [] lookup
 
+    # Like lookup, but returns nil on nil/blank/unparseable input instead of
+    # raising — for analytics and rendering call sites where a missing or
+    # garbage IP is ordinary data (an old DB row, a stripped header), not an
+    # exceptional condition worth a begin/rescue at every call site.
+    def try_lookup(ip)
+      return nil if ip.nil? || (ip.is_a?(String) && ip.strip.empty?)
+
+      lookup(ip)
+    rescue InvalidIPError
+      nil
+    end
+
     # Refresh canonical artifacts + Tier B overlays now, atomically
     # swapping the in-memory dataset on success.
     # -> :updated | :tier_b_only | :unchanged | :locked
