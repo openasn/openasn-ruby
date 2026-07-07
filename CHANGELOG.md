@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [0.3.1] - 2026-07-07
 
 ### Fixed
 
@@ -9,6 +9,9 @@
   a duplicate top-level key that can make YAML parsers drop existing jobs.
 - README scheduling guidance now calls out that manual update jobs should run
   after the 03:17 UTC data build, using UTC to avoid daylight-saving drift.
+- Removed the top-level `rexml/document` require from the WLVPN Tier B parser
+  so production Ruby 3.4 bundles that exclude the `rexml` bundled gem can boot
+  and precompile assets without adding app-side dependencies.
 
 ## [0.3.0] - 2026-07-07
 
@@ -86,6 +89,7 @@ Ergonomics release, driven by dogfooding the analytics/enrichment use case
   ranges, provider-attributed VPN overlays), Rack middleware, Rails install
   generator.
 
+[0.3.1]: https://github.com/openasn/openasn-ruby/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/openasn/openasn-ruby/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/openasn/openasn-ruby/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/openasn/openasn-ruby/releases/tag/v0.1.0

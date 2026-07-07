@@ -274,12 +274,13 @@ class ParsersTest < Minitest::Test
     body = <<~XML
       <wlvpnserverList>
         <server name="nyc-a01.wlvpn.com" ip="173.255.160.132" status="1" visible="1" />
+        <server visible='1' status='1' ip='173.255.160.133' name='nyc-a02.wlvpn.com' />
         <server name="down.wlvpn.com" ip="203.0.113.9" status="0" visible="1" />
         <server name="hidden.wlvpn.com" ip="203.0.113.10" status="1" visible="0" />
         <server name="duplicate.wlvpn.com" ip="173.255.160.132" status="1" visible="1" />
       </wlvpnserverList>
     XML
-    assert_equal ["173.255.160.132"], P.parse("wlvpn_server_list_xml", body)
+    assert_equal ["173.255.160.132", "173.255.160.133"], P.parse("wlvpn_server_list_xml", body)
   end
 
   def test_vpngate_csv
