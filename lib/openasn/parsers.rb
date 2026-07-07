@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require "rexml/document"
 require "zlib"
 
 module OpenASN
@@ -219,13 +218,11 @@ module OpenASN
     end
 
     register "wlvpn_server_list_xml" do |body|
-      doc = REXML::Document.new(body)
-      tokens = []
-      doc.elements.each("//server") do |server|
-        next unless server.attributes["visible"].to_s == "1" && server.attributes["status"].to_s == "1"
+      tokens = xml_tag_attributes(body, "server").filter_map do |attrs|
+        next unless attrs["visible"].to_s == "1" && attrs["status"].to_s == "1"
 
-        ip = server.attributes["ip"].to_s.strip
-        tokens << ip unless ip.empty?
+        ip = attrs["ip"].to_s.strip
+        ip unless ip.empty?
       end
       raise ParseError, "wlvpn_server_list_xml: no visible active server IPs — schema changed?" if tokens.empty?
 
@@ -431,6 +428,20 @@ module OpenASN
                 .gsub(/&nbsp;|&#160;/i, " ")
                 .gsub(/\s+/, " ")
                 .strip
+      end
+
+      # Tiny tag-attribute scanner for provider XML-ish feeds. We only need
+      # exact attributes from a trusted source-specific tag; pulling in REXML
+      # would make production apps depend on a bundled gem that Ruby 3.4 no
+      # longer guarantees is installed.
+      def xml_tag_attributes(body, tag_name)
+        body.scan(/<#{Regexp.escape(tag_name)}\b[^>]*>/i).map do |tag|
+          attrs = {}
+          tag.scan(/\b([a-z_:][\w:.-]*)\s*=\s*(["'])(.*?)\2/im).each do |key, _quote, value|
+            attrs[key.downcase] = value
+          end
+          attrs
+        end
       end
 
       def openvpn_remote_hosts(content)
