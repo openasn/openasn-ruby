@@ -18,7 +18,7 @@ OpenASN.configure do |config|
 
   # Self-host or pin the data source if you need to:
   # config.release_url = "https://github.com/openasn/openasn/releases/download/latest/"
-  # config.pin_version = "2026-07-04"   # a dated release tag, for reproducible builds
+  # config.pin_version = "v2026.07.04"  # a dated release tag, for reproducible builds
 
   # Tier B overlays — fetched by YOUR server from the original authorities
   # (Apple, Tor Project, AWS…), per the project's fetch-manifest. Defaults:
