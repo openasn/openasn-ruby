@@ -3,6 +3,7 @@
 require "test_helper"
 require "rails/generators"
 require "generators/openasn/install/install_generator"
+require "yaml"
 
 class GeneratorTest < Minitest::Test
   def setup
@@ -33,16 +34,42 @@ class GeneratorTest < Minitest::Test
   end
 
   def test_wires_solid_queue_recurring_yml_when_present
-    File.write(File.join(@dest, "config/recurring.yml"), "production:\n  cleanup:\n    class: CleanupJob\n")
+    File.write(File.join(@dest, "config/recurring.yml"), <<~YAML)
+      production:
+        cleanup:
+          class: CleanupJob
+
+      development:
+        cleanup:
+          class: CleanupJob
+    YAML
+
     run_generator
     recurring = File.read(File.join(@dest, "config/recurring.yml"))
     assert_includes recurring, "OpenASN::UpdateJob"
     assert_includes recurring, "4:12am UTC"
+    assert_equal 1, recurring.scan(/^production:/).count
+
+    parsed = YAML.load_file(File.join(@dest, "config/recurring.yml"))
+    assert_equal "CleanupJob", parsed.dig("production", "cleanup", "class")
+    assert_equal "OpenASN::UpdateJob", parsed.dig("production", "openasn_update", "class")
+    assert_equal "CleanupJob", parsed.dig("development", "cleanup", "class")
 
     # idempotent: running again must not duplicate the entry
     run_generator
     recurring = File.read(File.join(@dest, "config/recurring.yml"))
     assert_equal 1, recurring.scan("OpenASN::UpdateJob").count
+    assert_equal 1, recurring.scan(/^production:/).count
+  end
+
+  def test_creates_production_environment_when_recurring_yml_has_no_production
+    File.write(File.join(@dest, "config/recurring.yml"), "development:\n  cleanup:\n    class: CleanupJob\n")
+
+    run_generator
+
+    parsed = YAML.load_file(File.join(@dest, "config/recurring.yml"))
+    assert_equal "OpenASN::UpdateJob", parsed.dig("production", "openasn_update", "class")
+    assert_equal "CleanupJob", parsed.dig("development", "cleanup", "class")
   end
 
   def test_skips_recurring_wiring_gracefully_without_solid_queue
