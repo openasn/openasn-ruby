@@ -34,17 +34,22 @@ module OpenASN
     #   tor            → tor_exits                  (:tor_exit)
     #   clouds         → aws gcp azure oracle digitalocean linode vultr
     #                    + cloudflare_ranges context flag
+    #   clouds_extra   → github_meta atlassian (platform egress; opt-in
+    #                    because the ranges already sit inside AWS/Azure
+    #                    space the `clouds` group covers — what these add is
+    #                    provider ATTRIBUTION, and api.github.com/meta is
+    #                    rate-limited to 60 requests/hour unauthenticated)
     #   vpn_providers  → protonvpn mullvad ivpn pia airvpn windscribe
     #                    privado riseup wlvpn worldvpn ovpn
     #                    anonine
     #                    (exact provider-attributed VPN exit/server IPs)
     #   vpn_heavy      → nordvpn                    (large/fragile provider API)
-    #   vpn_dns        → surfshark ipvanish privatevpn purevpn torguard fastestvpn vpnsecure
+    #   vpn_dns        → surfshark ipvanish privatevpn purevpn torguard fastestvpn
     #                    tunnelbear strongvpn vyprvpn giganews slickvpn
     #                    azirevpn vpn.ac trust.zone
     #                    (provider hostnames resolved locally; opt-in)
     #   public_relays  → vpngate vpnbook freevpn.us (volunteer/free public VPN relays)
-    #   zscaler        → zscaler                    (:enterprise_gateway ranges)
+    #   zscaler        → zscaler zscaler_gov        (:enterprise_gateway ranges)
     #   nazgul_mixed   → nazgul_mixed               (flag only, never :vpn)
     attr_accessor :tier_b
 
@@ -73,6 +78,7 @@ module OpenASN
       apple_relay: true,
       tor: true,
       clouds: true,
+      clouds_extra: false,  # platform egress attribution (GitHub Actions, Atlassian); opt-in
       zscaler: false,       # ASN-level enterprise_gateway overrides already cover Zscaler
       vpn_providers: true,
       vpn_heavy: false,     # e.g. NordVPN's ~35MB API response; opt in deliberately
@@ -86,14 +92,15 @@ module OpenASN
       apple_relay: %w[apple_private_relay],
       tor: %w[tor_exits],
       clouds: %w[aws gcp azure oracle digitalocean linode vultr cloudflare_ranges],
-      zscaler: %w[zscaler],
+      clouds_extra: %w[github_meta atlassian],
+      zscaler: %w[zscaler zscaler_gov],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
                         privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_status_servers
                         anonine_status],
       vpn_heavy: %w[nordvpn_servers],
       vpn_dns: %w[surfshark_generic surfshark_static surfshark_obfuscated ipvanish_openvpn
                   privatevpn_openvpn purevpn_openvpn torguard_openvpn_tcp torguard_openvpn_udp
-                  fastestvpn_tcp fastestvpn_udp vpnsecure_locations tunnelbear_openvpn strongvpn_locations
+                  fastestvpn_tcp fastestvpn_udp tunnelbear_openvpn strongvpn_locations
                   vyprvpn_openvpn giganews_vyprvpn_hosts slickvpn_locations azirevpn_locations
                   vpnac_status trustzone_servers],
       public_relays: %w[vpngate vpnbook_openvpn freevpn_us_servers],

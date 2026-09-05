@@ -250,12 +250,20 @@ class ParsersTest < Minitest::Test
     assert_equal ["us-wa.trust.zone", "jp-nfx.trust.zone"], P.parse("trustzone_servers_html", body)
   end
 
+  # Shape verified live 2026-09-05 after SlickVPN's site redesign: each
+  # location card exposes the connect address in a copy button's data-host.
   def test_slickvpn_locations_html
     body = <<~HTML
-      <p>Amsterdam - <a href="https://members.newsdemon.com/vpn/2025/SV-2025-Amsterdam.ovpn">gw2.ams3.slickvpn.com</a></p>
-      <p>Ignored - <a href="https://example.com/SV-2025-Fake.ovpn">gw1.fake.slickvpn.com</a></p>
+      <div class="card"><span>Active</span>
+        <button data-host="gw2.ams3.slickvpn.com" title="Copy server address">Copy</button></div>
+      <div class="card"><span>Active</span>
+        <button data-host="gw1.bos1.slickvpn.com" title="Copy server address">Copy</button></div>
+      <a href="https://members.newsdemon.com/vpn/2025/SV-2025-Amsterdam.ovpn">config</a>
+      <button data-host="tracker.example.com">not a slickvpn host</button>
     HTML
-    assert_equal ["gw2.ams3.slickvpn.com"], P.parse("slickvpn_locations_html", body)
+    assert_equal ["gw2.ams3.slickvpn.com", "gw1.bos1.slickvpn.com"],
+                 P.parse("slickvpn_locations_html", body)
+    assert_raises(P::ParseError) { P.parse("slickvpn_locations_html", "<div>no servers</div>") }
   end
 
   def test_freevpn_us_status_html
@@ -550,5 +558,62 @@ class TierBExecutorTest < Minitest::Test
     assert_equal "Test Relay", r.provider
   ensure
     OpenASN::TierB.dns_resolver = old_resolver
+  end
+end
+
+# The bundled seed's fetch-manifest and the gem's own feature map are two
+# halves of one contract, and nothing linked them before: a source could be
+# added to fetch-manifest.json, ship, and be silently NEVER FETCHED because
+# no feature switch listed its id (or reference a parser this gem does not
+# have). Both mistakes are invisible at runtime — the executor just skips.
+class BundledManifestConsistencyTest < Minitest::Test
+  MANIFEST = JSON.parse(File.read(File.join(OpenASN::Snapshot::SEED_DIR, "fetch-manifest.json"))).freeze
+
+  def manifest_ids = MANIFEST["sources"].map { |s| s["id"] }
+
+  def mapped_ids = OpenASN::Configuration::TIER_B_SOURCE_MAP.values.flatten
+
+  def test_every_manifest_source_is_reachable_from_some_feature_switch
+    orphans = manifest_ids - mapped_ids
+    assert_empty orphans, "fetch-manifest sources no feature switch can enable: #{orphans.inspect}"
+  end
+
+  def test_every_mapped_source_id_exists_in_the_manifest
+    dangling = mapped_ids - manifest_ids
+    assert_empty dangling, "TIER_B_SOURCE_MAP names sources the manifest does not define: #{dangling.inspect}"
+  end
+
+  def test_every_manifest_parser_is_implemented_by_this_gem
+    missing = MANIFEST["sources"].map { |s| s["parser"] }.uniq.reject { |p| OpenASN::Parsers.known?(p) }
+    assert_empty missing, "fetch-manifest references parsers this gem lacks: #{missing.inspect}"
+  end
+
+  def test_feature_defaults_and_source_map_cover_the_same_switches
+    assert_equal OpenASN::Configuration::TIER_B_DEFAULTS.keys.sort,
+                 OpenASN::Configuration::TIER_B_SOURCE_MAP.keys.sort
+  end
+
+  def test_every_source_declares_the_fields_the_executor_relies_on
+    MANIFEST["sources"].each do |s|
+      assert s["id"].is_a?(String), "source without an id: #{s.inspect}"
+      assert s["maps_to"].is_a?(String), "#{s['id']}: missing maps_to"
+      assert s["cadence_hours"].is_a?(Integer), "#{s['id']}: missing cadence_hours"
+      assert s.key?("url") || s.key?("urls") || s["resolver"], "#{s['id']}: no URL or resolver"
+      # `role` is optional, but when present it must be one this gem acts on,
+      # otherwise the attribution silently disappears.
+      assert_equal "verified_crawler", s["role"], "#{s['id']}: unknown role" if s.key?("role")
+    end
+  end
+
+  # maps_to is either a verdict this gem's classifier consults or a "flag:*"
+  # context flag. A typo here is a source that fetches and then does nothing.
+  def test_maps_to_values_are_ones_the_classifier_acts_on
+    consulted = %w[relay tor_exit vpn enterprise_gateway hosting]
+    MANIFEST["sources"].each do |s|
+      m = s["maps_to"]
+      next if m.start_with?("flag:")
+
+      assert_includes consulted, m, "#{s['id']}: maps_to #{m.inspect} is never consulted"
+    end
   end
 end

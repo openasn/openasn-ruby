@@ -116,6 +116,30 @@
       "notes": "CONTEXT FLAG ONLY - never map to a blocking verdict. WARP and iCloud Private Relay egress live inside these ranges (that's why X4B excludes them from its dc list). Docs: https://developers.cloudflare.com/fundamentals/concepts/cloudflare-ip-addresses/"
     },
     {
+      "id": "github_meta",
+      "url": "https://api.github.com/meta",
+      "parser": "github_meta_json",
+      "maps_to": "hosting",
+      "provider": "github",
+      "cadence_hours": 24,
+      "aggregate_cidrs": true,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "GitHub's own published address list, documented for allowlisting at https://docs.github.com/en/rest/meta/meta. Verified live 2026-09-05: 200, 7624 CIDRs across actions/actions_macos/codespaces/copilot/hooks/web/api/git/packages/pages/importer/github_enterprise_importer -> 2101 v4 + 648 v6 merged ranges. Parser takes every CIDR-shaped entry in every top-level array and ignores ssh_keys / commit_signing_keys / domains, so new service groups need no parser change. GitHub Actions egress dominates the file; this is the single best answer to 'is this hosting IP a CI runner?'. Off by default because the unauthenticated endpoint is rate-limited to 60 requests/hour per IP and the ranges are already inside AWS/Azure space that the cloud recipes cover - the value added is the ATTRIBUTION, not new coverage."
+    },
+    {
+      "id": "atlassian",
+      "url": "https://ip-ranges.atlassian.com/",
+      "parser": "atlassian_ipranges_json",
+      "maps_to": "hosting",
+      "provider": "atlassian",
+      "cadence_hours": 168,
+      "aggregate_cidrs": true,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Atlassian publishes its cloud product ranges for firewall allowlisting: https://support.atlassian.com/organization-administration/docs/ip-addresses-and-domains-for-atlassian-cloud-products/. Verified live 2026-09-05: 200, items[].cidr, 166 CIDRs -> 68 v4 + 8 v6 merged ranges. Covers both directions (ingress + egress); the egress rows are what a site sees when Jira/Confluence/Bitbucket webhooks and Connect apps call out."
+    },
+    {
       "id": "protonvpn",
       "url": "https://raw.githubusercontent.com/tn3w/ProtonVPN-IPs/master/protonvpn_ips.txt",
       "parser": "plain_ip_per_line",
@@ -179,8 +203,8 @@
       "provider": "Windscribe",
       "cadence_hours": 24,
       "on_failure": "keep_stale",
-      "enabled_default": true,
-      "notes": "First-party Windscribe mobile server list JSON. Parser collects active locations' ping_ip and node ip/ip2/ip3 exact IPs; hostnames are ignored because OpenASN does not do DNS expansion inside Tier B."
+      "enabled_default": false,
+      "notes": "First-party Windscribe mobile server list JSON. Parser collects active locations' ping_ip and node ip/ip2/ip3 exact IPs; hostnames are ignored because OpenASN does not do DNS expansion inside Tier B. RECOMMENDATION CHANGED 2026-09-05 (was true): every assets.windscribe.com and api.windscribe.com path now answers 403 with a Cloudflare 'Sorry, you have been blocked' interstitial to a plain identifying User-Agent. OpenASN does not defeat bot challenges (see D-CUR-1), so this is off by default rather than a daily guaranteed failure for every client. The recipe is kept because Tier B runs on the END USER's network and the block may be vantage-specific; clients that fetch it successfully still get exact Windscribe exit IPs, and keep_stale means an already-fetched overlay keeps classifying."
     },
     {
       "id": "nordvpn_servers",
@@ -411,7 +435,7 @@
       "on_failure": "keep_stale",
       "enabled_default": false,
       "resolve_hostnames": true,
-      "notes": "Opt-in DNS-expanded source: first-party TorGuard TCP OpenVPN archive. The earlier servers.json endpoint hit a bot challenge, but these public config archives fetched cleanly live on 2026-07-05."
+      "notes": "Opt-in DNS-expanded source: first-party TorGuard TCP OpenVPN archive. The earlier servers.json endpoint hit a bot challenge, but these public config archives fetched cleanly live on 2026-07-05. 2026-09-05 re-check: 403 with Cloudflare 'error code: 1005', which is an ASN-level ban of the network the check ran from - NOT evidence the archive is gone. Left enabled-capable on purpose: Tier B is executed by the end user's own server, and keep_stale absorbs a 403 from a banned vantage."
     },
     {
       "id": "torguard_openvpn_udp",
@@ -452,18 +476,6 @@
       "enabled_default": false,
       "resolve_hostnames": true,
       "notes": "Opt-in DNS-expanded source: first-party FastestVPN UDP host table. Kept separate from TCP to avoid silent protocol-specific omissions."
-    },
-    {
-      "id": "vpnsecure_locations",
-      "url": "https://www.vpnsecure.me/vpn-locations/",
-      "parser": "vpnsecure_locations_html",
-      "maps_to": "vpn",
-      "provider": "VPNSecure",
-      "cadence_hours": 24,
-      "on_failure": "keep_stale",
-      "enabled_default": false,
-      "resolve_hostnames": true,
-      "notes": "Opt-in DNS-expanded source: VPNSecure's first-party locations page publishes per-server host labels and status. Parser keeps only hosts marked status--up and expands them to *.isponeder.com hostnames for local DNS resolution."
     },
     {
       "id": "tunnelbear_openvpn",
@@ -570,7 +582,18 @@
       "cadence_hours": 168,
       "on_failure": "keep_stale",
       "enabled_default": false,
-      "notes": "Cloud Enforcement Node Ranges, published for allowlisting (verified live 2026-07-04: nested JSON, collect every 'range' value, both v4 and v6). Off by default: the ASN-level enterprise_gateway overrides already cover Zscaler; enable for finer range-level coverage."
+      "notes": "Cloud Enforcement Node Ranges, published for allowlisting (verified live 2026-07-04: nested JSON, collect every 'range' value, both v4 and v6; re-verified 2026-09-05: 200, 935 ranges -> 673 networks). Off by default: the ASN-level enterprise_gateway overrides already cover Zscaler; enable for finer range-level coverage. Zscaler serves several named clouds at the same API path; measured 2026-09-05, zscalerone/two/three/zscloud/zscalerbeta are 99%+ duplicates of this file (36 new networks across all five), so only the separately-addressed government cloud below is worth a second fetch."
+    },
+    {
+      "id": "zscaler_gov",
+      "url": "https://config.zscaler.com/api/zscalergov.net/cenr/json",
+      "parser": "zscaler_json",
+      "maps_to": "enterprise_gateway",
+      "provider": "zscaler",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Zscaler's FedRAMP-authorized US government cloud, same CENR API and JSON shape as zscaler.net. Verified live 2026-09-05: 200, 30 ranges -> 6 v4 + 7 v6 networks, ALL 30 absent from zscaler.net - this is the one sibling cloud that is not a duplicate. Behind these IPs are US federal/state agency employees browsing from the office, so the enterprise_gateway (likely-human) semantics are exactly right."
     },
     {
       "id": "nazgul_mixed",

@@ -477,11 +477,17 @@ module OpenASN
       tokens.uniq
     end
 
+    # SlickVPN redesigned https://www.slickvpn.com/locations/ between
+    # 2026-07-05 and 2026-09-05: the old "hostname printed inside the .ovpn
+    # link text" markup is gone and each location card now carries an
+    # explicit copy-to-clipboard button, `<button data-host="gw1.bos1.
+    # slickvpn.com" title="Copy server address">`, next to an "Active" badge.
+    # Reading data-host is both simpler and stricter than the old pairing
+    # heuristic — it is the exact server address SlickVPN tells its own
+    # users to connect to, with no inference.
     register "slickvpn_locations_html" do |body|
-      tokens = body.scan(%r{<a\b[^>]*href=["']https://members\.newsdemon\.com/vpn/2025/[^"']+\.ovpn["'][^>]*>(.*?)</a>}im).flat_map do |label|
-        label.first.to_s.gsub(/<[^>]*>/, " ").scan(/\bgw\d+\.[a-z0-9.-]+\.slickvpn\.com\b/i)
-      end.map(&:downcase)
-      raise ParseError, "slickvpn_locations_html: no SlickVPN config-linked hostnames — schema changed?" if tokens.empty?
+      tokens = body.scan(/data-host=["']([a-z0-9.-]+\.slickvpn\.com)["']/i).flatten.map(&:downcase)
+      raise ParseError, "slickvpn_locations_html: no data-host server addresses — schema changed?" if tokens.empty?
 
       tokens.uniq
     end
