@@ -102,14 +102,14 @@ module OpenASN
       apple_relay: %w[apple_private_relay],
       tor: %w[tor_exits],
       clouds: %w[aws gcp azure oracle digitalocean linode vultr cloudflare_ranges],
-      clouds_extra: %w[github_meta atlassian],
+      clouds_extra: %w[github_meta atlassian fastly_ranges huawei_cloud_geofeed],
       verified_crawlers: %w[google_common_crawlers google_special_crawlers
                             google_user_triggered_fetchers_google google_user_triggered_agents
                             openai_gptbot openai_chatgpt_user openai_searchbot openai_adsbot
                             anthropic_bots applebot commoncrawl_ccbot duckduckbot
-                            perplexitybot perplexity_user],
+                            perplexitybot perplexity_user mistralai_user mistralai_index],
       verified_crawlers_extra: %w[bingbot google_infra google_user_triggered_fetchers_gae
-                                  amazonbot amzn_searchbot amzn_user],
+                                  amazonbot amzn_searchbot amzn_user ahrefsbot],
       zscaler: %w[zscaler zscaler_gov],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
                         privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_status_servers

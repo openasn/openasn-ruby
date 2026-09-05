@@ -382,6 +382,65 @@
       "notes": "Amzn-User, Amazon's user-triggered fetcher (role=verified_fetcher: a person asked). Verified live 2026-09-05: 200, 1023 bare IPv4 addresses, creationTime 2025-11-04 - the stalest and largest of the three Amazon lists, so the EC2 address-recycling risk is highest here. Opt-in."
     },
     {
+      "id": "fastly_ranges",
+      "url": "https://api.fastly.com/public-ip-list",
+      "parser": "fastly_public_ip_list_json",
+      "maps_to": "flag:cdn_edge",
+      "provider": "fastly",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "CONTEXT FLAG ONLY, exactly like cloudflare_ranges - never a blocking verdict, and deliberately NOT hosting. Fastly's own API reference frames this list as 'firewall rules for connections from Fastly to your origin' (https://www.fastly.com/documentation/reference/api/utils/public-ip-list), i.e. these are the SOURCE addresses of proxied end-user requests. Any Fastly-fronted site that ignores Fastly-Client-IP / X-Forwarded-For sees every real human visitor arriving from these 21 prefixes; 151.101.0.0/16 alone fronts a large slice of the top web. Labelling that hosting would stamp a machine label on real people at web scale. Verified live 2026-09-05: 200, 402 bytes, 19 v4 + 2 v6. Nuance for the flag's consumers: Fastly Compute customer code egresses from this same anycast space, so a minority of traffic here really is customer-programmable automation - a reason to annotate the flag, not to reclassify the block."
+    },
+    {
+      "id": "huawei_cloud_geofeed",
+      "url": "https://res-static.hc-cdn.cn/cloudbu-site/china/zh-cn/IP-location/google-geo-feed.csv",
+      "parser": "geofeed_csv",
+      "maps_to": "hosting",
+      "provider": "huawei",
+      "cadence_hours": 168,
+      "aggregate_cidrs": true,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Huawei Cloud's RFC 8805 geofeed. Found via RFC 9632 whois discovery, not documentation: the geofeed: attribute is published on five Huawei Cloud APNIC objects, which is what makes this a first-party publication rather than a scrape. Verified live 2026-09-05: 200, 33 KB, 927 rows -> 868 v4 + 59 v6. Uses the existing geofeed_csv parser unchanged."
+    },
+    {
+      "id": "mistralai_user",
+      "url": "https://mistral.ai/mistralai-user-ips.json",
+      "parser": "crawler_ipranges_json",
+      "maps_to": "hosting",
+      "provider": "mistralai-user",
+      "role": "verified_fetcher",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "MistralAI-User: fetches triggered by a person's question to Le Chat. role=verified_fetcher. Found via docs.mistral.ai/robots - the documented /crawlers paths 404. Verified live 2026-09-05: 200, 279 bytes, 4 IPv4 /32s in Azure space."
+    },
+    {
+      "id": "mistralai_index",
+      "url": "https://mistral.ai/mistralai-index-ips.json",
+      "parser": "crawler_ipranges_json",
+      "maps_to": "hosting",
+      "provider": "mistralai-index",
+      "role": "verified_crawler",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "notes": "MistralAI-Index: indexing crawler, documented as indexing-only with no AI training use. Verified live 2026-09-05: 200, 176 bytes, 2 IPv4 /32s."
+    },
+    {
+      "id": "ahrefsbot",
+      "url": "https://api.ahrefs.com/v3/public/crawler-ip-ranges",
+      "parser": "crawler_ipranges_json",
+      "maps_to": "hosting",
+      "provider": "ahrefsbot",
+      "role": "verified_crawler",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "AhrefsBot, the SEO crawler. Public and unauthenticated despite the api. hostname; documented at https://ahrefs.com/robot (note ahrefs.com/robot/crawler-ips 404s). Verified live 2026-09-05: 200, 3350 bytes, 81 prefixes, IPv4 only, same {prefixes:[{ipv4Prefix}]} envelope as the Google-shaped feeds but with NO creationTime key. Ahrefs also publishes an individual-IP endpoint (/crawler-ips, 10,350 entries, 403 KB) covering the SAME space at 120x the bytes - deliberately not used. Opt-in: a commercial SEO crawler is lower value to most consumers than the search and AI operators."
+    },
+    {
       "id": "protonvpn",
       "url": "https://raw.githubusercontent.com/tn3w/ProtonVPN-IPs/master/protonvpn_ips.txt",
       "parser": "plain_ip_per_line",
