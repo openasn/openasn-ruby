@@ -34,6 +34,14 @@ module OpenASN
     #   tor            → tor_exits                  (:tor_exit)
     #   clouds         → aws gcp azure oracle digitalocean linode vultr
     #                    + cloudflare_ranges context flag
+    #   verified_crawlers → the first-party operator recognition lists
+    #                    (Googlebot, GPTBot, ClaudeBot, Applebot, CCBot,
+    #                    DuckDuckBot, PerplexityBot + the user-triggered
+    #                    fetchers). Small, official, and the whole point of
+    #                    provider attribution, so ON by default.
+    #   verified_crawlers_extra → the tail: coarse Google infra, shared App
+    #                    Engine egress, Bingbot (no retrievable terms quote),
+    #                    Amazon's HTML-wrapped and months-stale lists.
     #   clouds_extra   → github_meta atlassian (platform egress; opt-in
     #                    because the ranges already sit inside AWS/Azure
     #                    space the `clouds` group covers — what these add is
@@ -79,6 +87,8 @@ module OpenASN
       tor: true,
       clouds: true,
       clouds_extra: false,  # platform egress attribution (GitHub Actions, Atlassian); opt-in
+      verified_crawlers: true,        # small official recognition lists; the agent-era answer
+      verified_crawlers_extra: false, # coarse, shared-tenant, stale or unquotable lists
       zscaler: false,       # ASN-level enterprise_gateway overrides already cover Zscaler
       vpn_providers: true,
       vpn_heavy: false,     # e.g. NordVPN's ~35MB API response; opt in deliberately
@@ -93,6 +103,13 @@ module OpenASN
       tor: %w[tor_exits],
       clouds: %w[aws gcp azure oracle digitalocean linode vultr cloudflare_ranges],
       clouds_extra: %w[github_meta atlassian],
+      verified_crawlers: %w[google_common_crawlers google_special_crawlers
+                            google_user_triggered_fetchers_google google_user_triggered_agents
+                            openai_gptbot openai_chatgpt_user openai_searchbot openai_adsbot
+                            anthropic_bots applebot commoncrawl_ccbot duckduckbot
+                            perplexitybot perplexity_user],
+      verified_crawlers_extra: %w[bingbot google_infra google_user_triggered_fetchers_gae
+                                  amazonbot amzn_searchbot amzn_user],
       zscaler: %w[zscaler zscaler_gov],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
                         privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_status_servers

@@ -1,5 +1,82 @@
 # Changelog
 
+## [Unreleased]
+
+The agent-web release: OpenASN can now answer "this hosting IP is Googlebot"
+without growing the verdict enum.
+
+### Added
+
+- **Verified crawler / fetcher attribution.** A `fetch-manifest.json` source
+  may declare an optional `role`, and `Result` gains `#crawler` (the operator
+  id, e.g. `"googlebot"`, `"chatgpt-user"`), `#crawler_role`,
+  `#verified_crawler?` and `#verified_fetcher?`, plus a matching context flag.
+  The verdict is untouched — a crawler egress genuinely IS a datacenter, and
+  `Result::VERDICTS` remains closed and append-only. What was missing was
+  attribution, so allowing Googlebot while throttling anonymous cloud traffic
+  is now a one-line policy decision.
+
+  `verified_crawler` and `verified_fetcher` are deliberately separate.
+  ChatGPT-User, Perplexity-User and Google's user-triggered fetchers run
+  because a PERSON asked for the page and is waiting, and they do not follow
+  all robots.txt directives. Reporting them as well-behaved automation would
+  invite apps to throttle a human — the exact false positive this library
+  exists to avoid.
+
+  Attribution is read from a separate role index, NOT from the verdict
+  ladder, and that is load-bearing: measured 2026-09-05, 27 of 28 Bingbot
+  prefixes and 100% of OpenAI's crawler prefixes sit inside Microsoft's
+  published Azure ranges, and 23 of 317 Googlebot prefixes sit inside GCP's
+  cloud.json. If attribution came from the ladder, the cloud overlays would
+  silently swallow the entire agent web.
+
+- **20 verified crawler / fetcher sources**, on by default where the list is
+  small, official and unambiguous: Googlebot, Google special-case crawlers,
+  Google user-triggered fetchers and Google-Agent, OpenAI GPTBot /
+  ChatGPT-User / OAI-SearchBot / OAI-AdsBot, Anthropic's combined
+  ClaudeBot feed, Applebot, Common Crawl CCBot, DuckDuckBot, PerplexityBot
+  and Perplexity-User. Opt-in `verified_crawlers_extra` carries Bingbot,
+  Google's coarse `goog.json`, shared App Engine egress, and Amazon's three
+  HTML-wrapped lists.
+
+- **Three cloud/platform sources**: `github_meta` (2101 v4 + 648 v6 — GitHub
+  Actions egress is the best available answer to "is this a CI runner?"),
+  `atlassian`, and `zscaler_gov`, plus new feature switches `clouds_extra`,
+  `verified_crawlers` and `verified_crawlers_extra`.
+
+- **Parsers**: `crawler_ipranges_json` (Google's envelope, copied verbatim by
+  Bing, OpenAI, Anthropic, Apple, Perplexity, DuckDuckGo and Common Crawl, so
+  a new crawler feed is now a manifest-only change), `amazon_bot_html_json`,
+  `github_meta_json`, `fastly_public_ip_list_json`,
+  `atlassian_ipranges_json`, `json_string_array`.
+
+- Context flags are now derived from whichever `flag:*` overlays a snapshot
+  holds rather than two hardcoded names, so a new flag source in
+  fetch-manifest.json works on gems that predate it.
+
+- A bundled-manifest consistency test class: the seed `fetch-manifest.json`
+  and `TIER_B_SOURCE_MAP` are two halves of one contract, and nothing linked
+  them before. A source could ship and never be fetched because no feature
+  switch named its id — invisible at runtime, since the executor just skips.
+
+### Changed
+
+- `Result#to_h` gains `crawler`, `verified_crawler`, `crawler_role` and
+  `verified_fetcher`, appended at the END (the to_h append-only contract).
+- `slickvpn_locations` parser rewritten for SlickVPN's site redesign: server
+  addresses now come from each card's `data-host` copy button.
+- `windscribe_servers` is no longer `enabled_default` — every Windscribe path
+  now answers 403 with a Cloudflare challenge, and OpenASN does not defeat bot
+  challenges. The source and its group membership stay: Tier B runs on the end
+  user's network, so the block may be vantage-specific, and keep-stale means an
+  overlay fetched earlier keeps classifying.
+
+### Removed
+
+- `vpnsecure_locations` source (the parser stays registered for clients pinned
+  to an older manifest). `/vpn-locations/` 404s and `/locations` is now
+  marketing copy with zero server hostnames — the list is gone, not moved.
+
 ## [0.3.1] - 2026-07-07
 
 ### Fixed

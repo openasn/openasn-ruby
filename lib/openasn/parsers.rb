@@ -132,6 +132,33 @@ module OpenASN
       prefixes
     end
 
+    # Amazon publishes its bot lists as a JSON document embedded in a
+    # documentation PAGE (~490 KB of HTML wrapping ~25 KB of JSON) inside
+    # `<pre><code class="container">…</code></pre>`, and the three files
+    # disagree with each other: amazonbot / live-ip-addresses use
+    # `ipv4Prefix` with BARE addresses ("52.4.5.6", no /32), while
+    # searchbot-ip-addresses uses AWS's `ip_prefix` key with the /32 already
+    # present. Normalise both, and append /32 only when the value has no
+    # prefix length — appending blindly would corrupt a real CIDR the day
+    # Amazon starts publishing one.
+    register "amazon_bot_html_json" do |body|
+      block = body[%r{<pre>\s*<code[^>]*class=["'][^"']*\bcontainer\b[^"']*["'][^>]*>(.*?)</code>\s*</pre>}m, 1]
+      raise ParseError, "amazon_bot_html_json: no <pre><code class=container> block — page changed?" unless block
+
+      json = block.gsub("&quot;", '"').gsub("&amp;", "&").gsub("&lt;", "<").gsub("&gt;", ">")
+      prefixes = (JSON.parse(json)["prefixes"] || []).filter_map do |p|
+        next unless p.is_a?(Hash)
+
+        value = p["ipv4Prefix"] || p["ip_prefix"] || p["ipv6Prefix"] || p["ipv6_prefix"]
+        next unless value.is_a?(String)
+
+        value.include?("/") ? value : "#{value}/#{value.include?(':') ? 128 : 32}"
+      end
+      raise ParseError, "amazon_bot_html_json: no prefixes — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
     # --- additional first-party cloud / platform publications ----------------
 
     # Fastly: {"addresses": ["23.235.32.0/20", …],

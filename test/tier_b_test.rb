@@ -489,6 +489,93 @@ class TierBExecutorTest < Minitest::Test
     assert_equal :relay, OpenASN.lookup("1.0.30.10").verdict
   end
 
+  # The headline end-to-end guarantee of the 2026-09 crawler work. Measured
+  # on the real feeds: 27 of 28 Bingbot prefixes and 100% of OpenAI's sit
+  # inside Azure's published ranges, and 23 of 317 Googlebot prefixes sit
+  # inside GCP's. So the cloud overlay legitimately WINS the verdict and the
+  # provider slot — and the crawler identity must survive that anyway. This
+  # test builds exactly that collision: one IP claimed by both a cloud
+  # source and a crawler source.
+  def test_crawler_attribution_survives_a_cloud_overlay_claiming_the_same_ip
+    cloud = "https://cloud.example/ranges.json"
+    bot = "https://operator.example/gptbot.json"
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [
+        { id: "aws", url: cloud, parser: "json_string_array", maps_to: "hosting",
+          provider: "cloudco", cadence_hours: 24 },
+        { id: "openai_gptbot", url: bot, parser: "crawler_ipranges_json", maps_to: "hosting",
+          provider: "gptbot", role: "verified_crawler", cadence_hours: 24 }
+      ]
+    }))
+    # The crawler /28 sits INSIDE the cloud /16.
+    stub_request(:get, cloud).to_return(status: 200, body: JSON.generate(["23.102.0.0/16"]))
+    stub_request(:get, bot).to_return(status: 200, body: JSON.generate(
+      { creationTime: "2026-09-04T18:03:29.248484", prefixes: [{ ipv4Prefix: "23.102.140.112/28" }] }
+    ))
+    configure { |c| c.tier_b = { clouds: true, verified_crawlers: true } }
+    assert execute
+
+    inside = OpenASN.lookup("23.102.140.115")
+    assert_equal :hosting, inside.verdict          # the network really is a datacenter
+    assert_equal "cloudco", inside.provider        # the cloud overlay legitimately wins
+    assert_equal "gptbot", inside.crawler          # …and the identity still surfaces
+    assert_predicate inside, :verified_crawler?
+    assert_includes inside.context_flags, :verified_crawler
+
+    # An address in the cloud range but outside the crawler /28 gets the same
+    # verdict and NO attribution — the whole point of per-prefix lists.
+    outside = OpenASN.lookup("23.102.9.9")
+    assert_equal :hosting, outside.verdict
+    assert_equal "cloudco", outside.provider
+    assert_nil outside.crawler
+    refute_predicate outside, :verified_crawler?
+  end
+
+  # A user-triggered fetcher is a human waiting on a page, so it must never
+  # be reported as autonomous crawler traffic (see Classifier::CRAWLER_ROLES).
+  def test_verified_fetcher_role_round_trips_through_the_store
+    url = "https://operator.example/chatgpt-user.json"
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "openai_chatgpt_user", url: url, parser: "crawler_ipranges_json",
+                  maps_to: "hosting", provider: "chatgpt-user", role: "verified_fetcher",
+                  cadence_hours: 6 }]
+    }))
+    stub_request(:get, url).to_return(status: 200, body: JSON.generate(
+      { creationTime: "2026-09-04T18:03:29.248484", prefixes: [{ ipv4Prefix: "1.0.30.0/24" }] }
+    ))
+    configure { |c| c.tier_b = { verified_crawlers: true } }
+    assert execute
+
+    assert_equal "verified_fetcher", OpenASN::OverlayStore.new(@test_data_dir)
+                                                          .source_state("openai_chatgpt_user")["role"]
+    r = OpenASN.lookup("1.0.30.10")
+    assert_equal "chatgpt-user", r.crawler
+    assert_predicate r, :verified_fetcher?
+    refute_predicate r, :verified_crawler?
+    assert_includes r.context_flags, :verified_fetcher
+  end
+
+  # A source with no role must behave exactly as it did before roles existed.
+  def test_a_source_without_a_role_produces_no_attribution
+    url = "https://cloud.example/ranges.json"
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "aws", url: url, parser: "json_string_array", maps_to: "hosting",
+                  provider: "cloudco", cadence_hours: 24 }]
+    }))
+    stub_request(:get, url).to_return(status: 200, body: JSON.generate(["1.0.30.0/24"]))
+    configure { |c| c.tier_b = { clouds: true } }
+    assert execute
+
+    r = OpenASN.lookup("1.0.30.10")
+    assert_equal "cloudco", r.provider
+    assert_nil r.crawler
+    assert_nil r.crawler_role
+    assert_empty r.context_flags
+  end
+
   def test_unknown_parser_is_skipped_gracefully
     File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
       schema_version: 1,
@@ -601,7 +688,9 @@ class BundledManifestConsistencyTest < Minitest::Test
       assert s.key?("url") || s.key?("urls") || s["resolver"], "#{s['id']}: no URL or resolver"
       # `role` is optional, but when present it must be one this gem acts on,
       # otherwise the attribution silently disappears.
-      assert_equal "verified_crawler", s["role"], "#{s['id']}: unknown role" if s.key?("role")
+      if s.key?("role")
+        assert_includes OpenASN::Classifier::CRAWLER_ROLES, s["role"], "#{s['id']}: unknown role"
+      end
     end
   end
 

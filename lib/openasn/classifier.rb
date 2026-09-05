@@ -33,6 +33,22 @@ module OpenASN
   # every national telco carries a transit role in upstream data; only
   # pure tier-1 backbone is genuinely ambiguous.
   module Classifier
+    # The closed `role` vocabulary a fetch-manifest source may declare, in
+    # precedence order. The split is not cosmetic: an autonomous crawler and
+    # a user-triggered fetcher deserve OPPOSITE default policies.
+    #
+    #   verified_crawler — Googlebot, GPTBot, ClaudeBot, Applebot. Software
+    #     browsing on its own schedule. Honors robots.txt. Nobody is waiting.
+    #   verified_fetcher — ChatGPT-User, Perplexity-User, Google's
+    #     user-triggered fetchers. A PERSON just asked for this page and is
+    #     waiting for it, and these agents deliberately do not follow all
+    #     robots.txt directives. Throttling them is throttling a human.
+    #
+    # Collapsing the two would tell an app that a live user's request is
+    # "well-behaved automation" — exactly the false positive this project
+    # exists to avoid.
+    CRAWLER_ROLES = %w[verified_crawler verified_fetcher].freeze
+
     module_function
 
     def classify(snapshot, ip_input)
@@ -67,20 +83,34 @@ module OpenASN
         end
       end
 
-      # Verified crawler / agent recognition lists (Googlebot, Bingbot,
-      # GPTBot, ClaudeBot…). Deliberately NOT a verdict: the network really
-      # is a datacenter, and the verdict enum is a closed, append-only
-      # contract. What the app needs is ATTRIBUTION — "this hosting IP is
-      # Googlebot" — so the operator id rides alongside as `crawler` plus a
-      # :verified_crawler context flag. Allowing Googlebot while throttling
-      # anonymous cloud traffic is then a one-line policy decision.
+      # Verified crawler / fetcher recognition lists (Googlebot, GPTBot,
+      # ClaudeBot, ChatGPT-User…). Deliberately NOT a verdict: the network
+      # really is a datacenter, and the verdict enum is a closed,
+      # append-only contract. What the app needs is ATTRIBUTION — "this
+      # hosting IP is Googlebot" — so the operator id rides alongside as
+      # `crawler` plus a context flag naming the role.
+      #
+      # This runs OUTSIDE the verdict ladder on purpose, and that is the
+      # whole reason the role index exists. Measured 2026-09-05: 27 of 28
+      # Bingbot prefixes, and 100% of every OpenAI crawler prefix, sit
+      # inside Microsoft's published Azure ranges; 23 of 317 Googlebot
+      # prefixes sit inside GCP's cloud.json. If attribution came from the
+      # maps_to ladder, whichever cloud overlay happened to be indexed
+      # first would swallow the entire agent web and the crawler identity
+      # would never surface. Reading roles separately means `azure` can win
+      # the provider slot while `crawler` still says "gptbot".
       crawler = nil
-      snapshot.overlays_for_role(family, "verified_crawler").each do |(entry, layer)|
-        next unless layer.cover?(ip_int)
+      crawler_role = nil
+      CRAWLER_ROLES.each do |role_name|
+        snapshot.overlays_for_role(family, role_name).each do |(entry, layer)|
+          next unless layer.cover?(ip_int)
 
-        crawler = entry.provider || entry.id
-        context << :verified_crawler
-        break
+          crawler = entry.provider || entry.id
+          crawler_role = role_name.to_sym
+          context << crawler_role
+          break
+        end
+        break if crawler
       end
 
       verdict, provider, sources = decide(snapshot, layers, family, ip_int, flags, category, role, asn)
@@ -89,7 +119,8 @@ module OpenASN
         ip: ip_string, verdict: verdict, asn: asn,
         as_org: snapshot.org_name(asn), category: category, network_role: role,
         provider: provider, sources: sources, flags: flags,
-        context_flags: context, crawler: crawler, unrouted: asn.nil?
+        context_flags: context, crawler: crawler, crawler_role: crawler_role,
+        unrouted: asn.nil?
       )
     end
 

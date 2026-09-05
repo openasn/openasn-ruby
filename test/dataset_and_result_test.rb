@@ -125,7 +125,7 @@ class ResultTest < Minitest::Test
     # removing or reordering existing keys is a breaking change.
     assert_equal %i[ip verdict infrastructure likely_human asn as_org category
                     network_role provider sources flags flag_names context_flags
-                    unrouted crawler verified_crawler], h.keys
+                    unrouted crawler verified_crawler crawler_role verified_fetcher], h.keys
     assert_equal :vpn, h[:verdict]
     assert h[:infrastructure]
   end
@@ -133,16 +133,38 @@ class ResultTest < Minitest::Test
   def test_crawler_attribution_is_optional_and_defaults_to_nil
     r = OpenASN::Result.new(ip: "192.0.2.1", verdict: :hosting)
     assert_nil r.crawler
+    assert_nil r.crawler_role
     refute_predicate r, :verified_crawler?
+    refute_predicate r, :verified_fetcher?
     refute r.to_h[:verified_crawler]
 
     bot = OpenASN::Result.new(ip: "66.249.66.1", verdict: :hosting, provider: "gcp",
-                              crawler: "googlebot", context_flags: [:verified_crawler])
+                              crawler: "googlebot", crawler_role: :verified_crawler,
+                              context_flags: [:verified_crawler])
     assert_equal "googlebot", bot.crawler
     assert_predicate bot, :verified_crawler?
+    refute_predicate bot, :verified_fetcher?
     # Attribution never moves the verdict: the network really is a datacenter.
+    # Note the provider stays "gcp" — Googlebot's geo-crawl /28s really are
+    # carved out of Google Cloud — while `crawler` carries the identity.
     assert_equal :hosting, bot.verdict
+    assert_equal "gcp", bot.provider
     assert_includes bot.context_flags, :verified_crawler
+  end
+
+  # A user-triggered fetcher must NOT read as well-behaved automation: a
+  # person is waiting on the response, so an app that throttles "crawlers"
+  # would be throttling a human. The two roles stay strictly disjoint.
+  def test_verified_fetcher_is_not_reported_as_a_verified_crawler
+    fetcher = OpenASN::Result.new(ip: "23.102.140.115", verdict: :hosting, provider: "azure",
+                                  crawler: "chatgpt-user", crawler_role: :verified_fetcher,
+                                  context_flags: [:verified_fetcher])
+    assert_predicate fetcher, :verified_fetcher?
+    refute_predicate fetcher, :verified_crawler?
+    assert_equal "chatgpt-user", fetcher.crawler
+    assert_equal :verified_fetcher, fetcher.to_h[:crawler_role]
+    # Either way, "some operator list claims this IP" is just crawler != nil.
+    refute_nil fetcher.crawler
   end
 
   def test_flag_names_decode_the_bitfield_and_bad_asn_reads_plainly
