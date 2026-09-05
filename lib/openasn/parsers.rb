@@ -106,6 +106,90 @@ module OpenASN
       cidrs
     end
 
+    # --- verified crawler / agent recognition lists ---------------------------
+
+    # The de-facto standard shape for "these IPs are really our crawler",
+    # first published by Google and since copied verbatim by Bing, OpenAI,
+    # Perplexity, Common Crawl and others:
+    #
+    #   {"creationTime": "...", "prefixes": [{"ipv4Prefix": "..."},
+    #                                        {"ipv6Prefix": "..."}]}
+    #
+    # One parser covers every publisher that follows it, so a new crawler
+    # feed is a fetch-manifest entry with no gem release. Publishers that
+    # deviate (Amazon's plain-text lists, Bing's variants) get their own id.
+    register "crawler_ipranges_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "crawler_ipranges_json: expected object" unless data.is_a?(Hash)
+
+      prefixes = (data["prefixes"] || []).filter_map do |p|
+        next unless p.is_a?(Hash)
+
+        p["ipv4Prefix"] || p["ipv6Prefix"] || p["ipv4prefix"] || p["ipv6prefix"]
+      end
+      raise ParseError, "crawler_ipranges_json: no prefixes — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
+    # --- additional first-party cloud / platform publications ----------------
+
+    # Fastly: {"addresses": ["23.235.32.0/20", …],
+    #          "ipv6_addresses": ["2a04:4e40::/32", …]}
+    register "fastly_public_ip_list_json" do |body|
+      data = JSON.parse(body)
+      prefixes = Array(data["addresses"]) + Array(data["ipv6_addresses"])
+      raise ParseError, "fastly_public_ip_list_json: no addresses — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
+    # GitHub https://api.github.com/meta — a flat object whose values are
+    # arrays of CIDRs grouped by service ("actions", "hooks", "api", "git",
+    # "packages", "copilot", …) mixed with non-CIDR keys ("ssh_keys",
+    # "verifiable_password_authentication", "domains"). Every CIDR in the
+    # document is GitHub-operated datacenter space, so we take the union of
+    # every top-level array entry that looks like a CIDR and stay immune to
+    # GitHub adding service groups (which it does regularly).
+    register "github_meta_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "github_meta_json: expected object" unless data.is_a?(Hash)
+
+      prefixes = data.each_value.flat_map do |value|
+        next [] unless value.is_a?(Array)
+
+        value.select { |v| v.is_a?(String) && v.include?("/") && v.match?(%r{\A[0-9a-fA-F:.]+/\d{1,3}\z}) }
+      end.uniq
+      raise ParseError, "github_meta_json: no CIDRs — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
+    # Atlassian https://ip-ranges.atlassian.com/ —
+    # {"items": [{"cidr": "…", "product": ["jira"], "direction": ["egress"]}]}
+    register "atlassian_ipranges_json" do |body|
+      data = JSON.parse(body)
+      items = data["items"]
+      raise ParseError, "atlassian_ipranges_json: no items — schema changed?" unless items.is_a?(Array)
+
+      cidrs = items.filter_map { |i| i["cidr"] if i.is_a?(Hash) }
+      raise ParseError, "atlassian_ipranges_json: no cidrs — schema changed?" if cidrs.empty?
+
+      cidrs
+    end
+
+    # A bare top-level JSON array of CIDR/IP strings — the shape several
+    # smaller operators publish ("[\"1.2.3.0/24\", \"2.3.4.0/24\"]").
+    register "json_string_array" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "json_string_array: expected array" unless data.is_a?(Array)
+
+      tokens = data.select { |v| v.is_a?(String) }.map(&:strip).reject(&:empty?)
+      raise ParseError, "json_string_array: empty — schema changed?" if tokens.empty?
+
+      tokens
+    end
+
     # Zscaler CENR: nested {"zscaler.net": {"continent …": {"city …": [{"range": …}]}}}.
     # Shape verified live 2026-07-04; we walk generically so cosmetic
     # nesting changes don't break us.

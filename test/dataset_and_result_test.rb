@@ -125,9 +125,24 @@ class ResultTest < Minitest::Test
     # removing or reordering existing keys is a breaking change.
     assert_equal %i[ip verdict infrastructure likely_human asn as_org category
                     network_role provider sources flags flag_names context_flags
-                    unrouted], h.keys
+                    unrouted crawler verified_crawler], h.keys
     assert_equal :vpn, h[:verdict]
     assert h[:infrastructure]
+  end
+
+  def test_crawler_attribution_is_optional_and_defaults_to_nil
+    r = OpenASN::Result.new(ip: "192.0.2.1", verdict: :hosting)
+    assert_nil r.crawler
+    refute_predicate r, :verified_crawler?
+    refute r.to_h[:verified_crawler]
+
+    bot = OpenASN::Result.new(ip: "66.249.66.1", verdict: :hosting, provider: "gcp",
+                              crawler: "googlebot", context_flags: [:verified_crawler])
+    assert_equal "googlebot", bot.crawler
+    assert_predicate bot, :verified_crawler?
+    # Attribution never moves the verdict: the network really is a datacenter.
+    assert_equal :hosting, bot.verdict
+    assert_includes bot.context_flags, :verified_crawler
   end
 
   def test_flag_names_decode_the_bitfield_and_bad_asn_reads_plainly

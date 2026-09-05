@@ -123,15 +123,26 @@ module OpenASN
       # most of the gap was these throwaway arrays, not the binary searches).
       # The snapshot is immutable, so build the index exactly once.
       @overlay_index = {}
+      # Parallel index keyed by the optional `role` descriptor ("verified_crawler")
+      # so provider attribution for roles costs the same single hash fetch as a
+      # maps_to lookup and never scans the overlay list.
+      @role_index = {}
       @overlays.each do |o|
         { ipv4: o.v4, ipv6: o.v6 }.each do |fam, layer|
           next unless layer
 
           (@overlay_index[[fam, o.maps_to]] ||= []) << [o, layer].freeze
+          (@role_index[[fam, o.role]] ||= []) << [o, layer].freeze if o.role
         end
       end
       @overlay_index.each_value(&:freeze)
       @overlay_index.freeze
+      @role_index.each_value(&:freeze)
+      @role_index.freeze
+      # Every distinct "flag:<name>" overlay present, so the classifier can
+      # surface context flags for sources added to fetch-manifest.json AFTER
+      # this gem shipped instead of only the two it was compiled knowing about.
+      @context_flag_maps_to = @overlays.map(&:maps_to).uniq.select { |m| m.to_s.start_with?("flag:") }.freeze
       freeze
     end
 
@@ -145,6 +156,14 @@ module OpenASN
     def overlays_for(fam, maps_to)
       @overlay_index.fetch([fam, maps_to], EMPTY_OVERLAYS)
     end
+
+    # Overlays carrying an optional `role` descriptor (e.g. "verified_crawler").
+    def overlays_for_role(fam, role)
+      @role_index.fetch([fam, role], EMPTY_OVERLAYS)
+    end
+
+    # The "flag:<name>" maps_to values this snapshot actually holds.
+    attr_reader :context_flag_maps_to
 
     def org_name(asn)
       asn && @orgs ? @orgs.name(asn) : nil

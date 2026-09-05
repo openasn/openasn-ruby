@@ -121,7 +121,7 @@ module OpenASN
       end
 
       @store.write(id, maps_to: source["maps_to"], provider: source["provider"],
-                       etag: new_etag, ranges_by_family: ranges)
+                       role: source["role"], etag: new_etag, ranges_by_family: ranges)
       @logger.info("openasn: tier B #{id}: #{ranges[:ipv4].length} v4 + #{ranges[:ipv6].length} v6 ranges")
       true
     rescue StandardError => e

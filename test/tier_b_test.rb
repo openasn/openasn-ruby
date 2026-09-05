@@ -288,11 +288,75 @@ class ParsersTest < Minitest::Test
     assert_equal ["219.100.37.224"], P.parse("vpngate_csv", body)
   end
 
+  # --- verified crawler / agent recognition lists ---------------------------
+
+  def test_crawler_ipranges_json_google_shape
+    body = JSON.generate({ creationTime: "2026-09-04T14:46:55.000000",
+                           prefixes: [{ ipv6Prefix: "2001:4860:4801:10::/64" },
+                                      { ipv4Prefix: "66.249.64.0/27" }] })
+    assert_equal ["2001:4860:4801:10::/64", "66.249.64.0/27"], P.parse("crawler_ipranges_json", body)
+  end
+
+  # Bing, OpenAI, Perplexity and Common Crawl all copied Google's shape
+  # verbatim — one parser, no gem release per new crawler feed.
+  def test_crawler_ipranges_json_covers_every_publisher_of_that_shape
+    bing = JSON.generate({ creationTime: "2024-01-03T10:00:00.121331",
+                           prefixes: [{ ipv4Prefix: "157.55.39.0/24" }] })
+    ccbot = JSON.generate({ synctoken: "20260811134000", notes: "IP ranges used by CCBot.",
+                            prefixes: [{ ipv6Prefix: "2600:1f28:365:8000::/56" }] })
+    assert_equal ["157.55.39.0/24"], P.parse("crawler_ipranges_json", bing)
+    assert_equal ["2600:1f28:365:8000::/56"], P.parse("crawler_ipranges_json", ccbot)
+  end
+
+  def test_crawler_ipranges_json_rejects_drift
+    assert_raises(P::ParseError) { P.parse("crawler_ipranges_json", JSON.generate({ prefixes: [] })) }
+    assert_raises(P::ParseError) { P.parse("crawler_ipranges_json", "[]") }
+    # An HTML error page served at a .json URL must not parse as "no data".
+    assert_raises(P::ParseError) { P.parse("crawler_ipranges_json", "<!DOCTYPE html><html>") }
+  end
+
+  # --- additional cloud / platform publications ------------------------------
+
+  def test_fastly_public_ip_list_json
+    body = JSON.generate({ addresses: ["23.235.32.0/20"], ipv6_addresses: ["2a04:4e40::/32"] })
+    assert_equal ["23.235.32.0/20", "2a04:4e40::/32"], P.parse("fastly_public_ip_list_json", body)
+  end
+
+  # GitHub mixes CIDR arrays with ssh keys, booleans and objects, and adds
+  # service groups regularly — take every CIDR, ignore everything else.
+  def test_github_meta_json_takes_every_cidr_group_and_ignores_the_rest
+    body = JSON.generate({ verifiable_password_authentication: true,
+                           ssh_key_fingerprints: { SHA256_RSA: "uNiVztksC..." },
+                           ssh_keys: ["ssh-ed25519 AAAAC3Nz"],
+                           hooks: ["192.30.252.0/22", "2a0a:a440::/29"],
+                           actions: ["4.148.0.0/16"],
+                           domains: { website: ["*.github.com"] } })
+    assert_equal ["192.30.252.0/22", "2a0a:a440::/29", "4.148.0.0/16"],
+                 P.parse("github_meta_json", body)
+  end
+
+  def test_atlassian_ipranges_json
+    body = JSON.generate({ creationDate: "2026-09-01", syncToken: 1,
+                           items: [{ network: "13.52.5.0", mask_len: 24, cidr: "13.52.5.0/24",
+                                     product: ["jira"], direction: ["egress"] }] })
+    assert_equal ["13.52.5.0/24"], P.parse("atlassian_ipranges_json", body)
+  end
+
+  def test_json_string_array
+    assert_equal ["1.2.3.0/24", "2001:db8::/32"],
+                 P.parse("json_string_array", JSON.generate(["1.2.3.0/24", "2001:db8::/32"]))
+    assert_raises(P::ParseError) { P.parse("json_string_array", JSON.generate({})) }
+    assert_raises(P::ParseError) { P.parse("json_string_array", "[]") }
+  end
+
   def test_schema_drift_raises_parse_error
     assert_raises(P::ParseError) { P.parse("aws_json", "{}") }
     assert_raises(P::ParseError) { P.parse("mullvad_relays_json", "[]") }
     assert_raises(P::ParseError) { P.parse("aws_json", "not json") }
     assert_raises(P::ParseError) { P.parse("nope_parser", "x") }
+    assert_raises(P::ParseError) { P.parse("fastly_public_ip_list_json", "{}") }
+    assert_raises(P::ParseError) { P.parse("github_meta_json", JSON.generate({ ssh_keys: ["x"] })) }
+    assert_raises(P::ParseError) { P.parse("atlassian_ipranges_json", "{}") }
   end
 
   private

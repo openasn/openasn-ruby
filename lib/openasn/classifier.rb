@@ -54,12 +54,33 @@ module OpenASN
       role = BinaryFormat.role_name(flags)
 
       # Context flags never decide verdicts; they ride along for app logic.
+      # Derived from whatever "flag:*" overlays the snapshot holds, so a new
+      # flag source in fetch-manifest.json works on gems that predate it.
       context = []
-      snapshot.overlays_for(family, "flag:cloudflare_range").each do |(_, layer)|
-        context << :cloudflare_range if layer.cover?(ip_int)
+      snapshot.context_flag_maps_to.each do |maps_to|
+        name = maps_to[5..].to_sym # "flag:cloudflare_range" -> :cloudflare_range
+        snapshot.overlays_for(family, maps_to).each do |(_, layer)|
+          if layer.cover?(ip_int)
+            context << name
+            break
+          end
+        end
       end
-      snapshot.overlays_for(family, "flag:mixed_high_risk").each do |(_, layer)|
-        context << :mixed_high_risk if layer.cover?(ip_int)
+
+      # Verified crawler / agent recognition lists (Googlebot, Bingbot,
+      # GPTBot, ClaudeBot…). Deliberately NOT a verdict: the network really
+      # is a datacenter, and the verdict enum is a closed, append-only
+      # contract. What the app needs is ATTRIBUTION — "this hosting IP is
+      # Googlebot" — so the operator id rides alongside as `crawler` plus a
+      # :verified_crawler context flag. Allowing Googlebot while throttling
+      # anonymous cloud traffic is then a one-line policy decision.
+      crawler = nil
+      snapshot.overlays_for_role(family, "verified_crawler").each do |(entry, layer)|
+        next unless layer.cover?(ip_int)
+
+        crawler = entry.provider || entry.id
+        context << :verified_crawler
+        break
       end
 
       verdict, provider, sources = decide(snapshot, layers, family, ip_int, flags, category, role, asn)
@@ -68,7 +89,7 @@ module OpenASN
         ip: ip_string, verdict: verdict, asn: asn,
         as_org: snapshot.org_name(asn), category: category, network_role: role,
         provider: provider, sources: sources, flags: flags,
-        context_flags: context, unrouted: asn.nil?
+        context_flags: context, crawler: crawler, unrouted: asn.nil?
       )
     end
 
