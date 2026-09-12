@@ -350,6 +350,182 @@ class ParsersTest < Minitest::Test
     assert_equal ["13.52.5.0/24"], P.parse("atlassian_ipranges_json", body)
   end
 
+  # --- documentation-as-data clouds ------------------------------------------
+
+  # Scaleway's page has TWO bullet lists of addresses. Only the first is
+  # prefix data; the second is DNS/NTP resolver hosts. Getting the section
+  # boundary wrong is the whole risk, so the fixture reproduces it.
+  def test_scaleway_network_mdx_reads_only_the_ip_ranges_section
+    body = <<~MDX
+      ---
+      title: Scaleway network information
+      dates:
+        validation: 2025-06-27
+      ---
+
+      ## IP ranges used by Scaleway
+
+      Currently, we use the following IP ranges:
+
+      ### IPv4
+      * `62.210.0.0/16`
+      * `195.154.0.0/16`
+      * `212.129.0.0/18`
+      * `62.4.0.0/19`
+      * `212.83.128.0/19`
+      * `212.83.160.0/19`
+      * `212.47.224.0/19`
+      * `163.172.0.0/16`
+      * `51.15.0.0/16`
+      * `151.115.0.0/16`
+      * `51.158.0.0/15`
+      * `78.232.0.0/16`
+
+      ### IPv6
+      * `2001:bc8::/32`
+
+      ## DNS cache servers and NTP servers
+
+      #### fr-par-1
+
+      - `51.159.69.162`
+      - `2001:bc8:408:1::12`
+
+      ## Additional Dedibox services
+
+      Our monitoring servers are located in the IP subnet `62.210.16.0/24`.
+    MDX
+    tokens = P.parse("scaleway_network_mdx", body)
+    assert_equal 13, tokens.length
+    assert_includes tokens, "62.210.0.0/16"
+    assert_includes tokens, "2001:bc8::/32"
+    refute_includes tokens, "51.159.69.162"
+    refute_includes tokens, "62.210.16.0/24"
+  end
+
+  def test_scaleway_network_mdx_refuses_a_truncated_page
+    assert_raises(P::ParseError) do
+      P.parse("scaleway_network_mdx", "## IP ranges used by Scaleway\n\n### IPv4\n* `62.210.0.0/16`\n")
+    end
+  end
+
+  # The single most dangerous document in the manifest: 509 of IBM's 759
+  # CIDRs are RFC1918. Two independent guards must both hold.
+  def test_ibm_cloud_ip_ranges_markdown_keeps_public_sections_only
+    body = <<~MD
+      ---
+      last-updated: 2026-06-09
+      ---
+
+      ## Front-end (public) network
+      {: #front-end-network}
+
+      |Data center|City|IP range|
+      |---|---|---|
+      |ams03|Amsterdam |159.8.198.0/23|
+      |dal05|Dallas |50.23.203.0/24  \\n 108.168.157.0/24  \\n 173.192.117.0/24|
+      FRONT_END_FILLER
+
+      ## Load balancer IPs
+      {: #load-balancer-ips}
+
+      |Data center|City|IP range|
+      |---|---|---|
+      |ams03|Amsterdam|159.8.197.0/24|
+
+      ## Back-end (private) network
+      {: #back-end-network}
+
+      |Data center|City|IP range|
+      |---|---|---|
+      |ams03|Amsterdam|10.2.64.0/19|
+
+      ### Customer private network space
+
+      |IP range|
+      |---|
+      |172.16.0.0/12|
+
+      ## Legacy networks
+      {: #legacy-networks}
+
+      |IP range|
+      |---|
+      |12.96.160.0/24|
+      |216.12.193.9|
+
+      ## Red Hat Enterprise Linux server requirements
+
+      | Server location | Permitted data centers | IP ranges |
+      |---|---|---|
+      | Amsterdam (ams03) | fra02 | 161.26.36.0/22 |
+
+      ## Windows virtual server instance requirements
+
+      |Data Center|City|BCR IP Range|
+      |---|---|---|
+      |tok04|Tokyo|10.3.17.0/24 \\n 10.192.0.0/16|
+    MD
+    # enough real rows to clear the >= 50 sanity floor the parser enforces
+    filler = (1..60).map { |i| "|dc#{i}|City |169.4#{i / 10}.#{i}.0/24|" }.join("\n")
+    tokens = P.parse("ibm_cloud_ip_ranges_markdown", body.sub("FRONT_END_FILLER", filler))
+    # multi-CIDR cells split on the LITERAL backslash-n
+    assert_includes tokens, "108.168.157.0/24"
+    assert_includes tokens, "173.192.117.0/24"
+    assert_includes tokens, "159.8.197.0/24"
+    # bare legacy address becomes a host route
+    assert_includes tokens, "216.12.193.9/32"
+    # private space never survives, by section AND by RFC1918 guard
+    refute_includes tokens, "10.2.64.0/19"
+    refute_includes tokens, "172.16.0.0/12"
+    refute_includes tokens, "10.192.0.0/16"
+    # third-party endpoints a customer must reach are not IBM space
+    refute_includes tokens, "161.26.36.0/22"
+  end
+
+  def test_ibm_cloud_ip_ranges_markdown_refuses_a_page_that_lost_its_public_tables
+    body = "## Back-end (private) network\n\n|dc|city|range|\n|---|---|---|\n|ams03|Amsterdam|10.2.64.0/19|\n"
+    assert_raises(P::ParseError) { P.parse("ibm_cloud_ip_ranges_markdown", body) }
+  end
+
+  # OVH's 24 cluster gateways are the point of the recipe; the country VIP
+  # tables come along because they are equally OVH datacenter space.
+  def test_ovh_web_hosting_cluster_md_takes_vips_and_the_outgoing_gateway
+    cluster = lambda do |n, v4, v6, cdn, gw|
+      <<~MD
+        #### Cluster #{n}
+
+        Below are the **cluster** IP addresses for each country (for geolocation):
+        | Country        | Country Code | IPv4           | IPv6                 |
+        | -------------- | ------------ | -------------- | -------------------- |
+        | France         | FR           | #{v4}  | #{v6}    |
+        If you have activated the **Shared CDN** option on your Web Hosting, use this IP address:
+        ```bash
+        #{cdn}
+        ```
+        If you need the **outgoing IP address** of the Web Hosting cluster (gateway), use this IP address:
+        ```bash
+        #{gw}
+        ```
+      MD
+    end
+    body = +"---\nlastUpdated: 2026-07-21\n---\n\n# Web Hosting - List of IP addresses by cluster\n\n"
+    # 60 synthetic clusters clear the >= 100 sanity floor the parser enforces
+    60.times { |i| body << cluster.call(i, "188.165.61.#{i}", "2001:41d0:301::#{i}", "46.105.204.#{i}", "91.134.248.#{i}") }
+    tokens = P.parse("ovh_web_hosting_cluster_md", body)
+    assert_includes tokens, "188.165.61.7/32"
+    assert_includes tokens, "2001:41d0:301::7/128"
+    assert_includes tokens, "46.105.204.7/32"
+    assert_includes tokens, "91.134.248.7/32"
+    assert_equal 240, tokens.length
+  end
+
+  def test_ovh_web_hosting_cluster_md_refuses_a_page_that_lost_its_tables
+    assert_raises(P::ParseError) do
+      P.parse("ovh_web_hosting_cluster_md", "# Web Hosting\n\nNo addresses here any more.\n")
+    end
+  end
+
   def test_json_string_array
     assert_equal ["1.2.3.0/24", "2001:db8::/32"],
                  P.parse("json_string_array", JSON.generate(["1.2.3.0/24", "2001:db8::/32"]))

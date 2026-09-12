@@ -42,10 +42,14 @@ module OpenASN
     #   verified_crawlers_extra → the tail: coarse Google infra, shared App
     #                    Engine egress, Bingbot (no retrievable terms quote),
     #                    Amazon's HTML-wrapped and months-stale lists.
-    #   clouds_extra   → github_meta atlassian (platform egress; opt-in
-    #                    because the ranges already sit inside AWS/Azure
-    #                    space the `clouds` group covers — what these add is
-    #                    provider ATTRIBUTION, and api.github.com/meta is
+    #   clouds_extra   → github_meta atlassian fastly huawei scaleway
+    #                    ibm_cloud_classic ovh_web_hosting_clusters
+    #                    (platform egress and second-tier clouds; opt-in
+    #                    because the ranges either sit inside AWS/Azure
+    #                    space the `clouds` group covers or inside ASNs the
+    #                    core artifact already labels hosting — what these
+    #                    add is range-level precision and provider
+    #                    ATTRIBUTION, and api.github.com/meta is
     #                    rate-limited to 60 requests/hour unauthenticated)
     #   vpn_providers  → protonvpn mullvad ivpn pia airvpn windscribe
     #                    privado riseup wlvpn worldvpn ovpn
@@ -102,7 +106,8 @@ module OpenASN
       apple_relay: %w[apple_private_relay],
       tor: %w[tor_exits],
       clouds: %w[aws gcp azure oracle digitalocean linode vultr cloudflare_ranges],
-      clouds_extra: %w[github_meta atlassian fastly_ranges huawei_cloud_geofeed],
+      clouds_extra: %w[github_meta atlassian fastly_ranges huawei_cloud_geofeed
+                       scaleway_ranges ibm_cloud_classic ovh_web_hosting_clusters],
       verified_crawlers: %w[google_common_crawlers google_special_crawlers
                             google_user_triggered_fetchers_google google_user_triggered_agents
                             openai_gptbot openai_chatgpt_user openai_searchbot openai_adsbot

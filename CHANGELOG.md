@@ -44,11 +44,31 @@ without growing the verdict enum.
   `atlassian`, and `zscaler_gov`, plus new feature switches `clouds_extra`,
   `verified_crawlers` and `verified_crawlers_extra`.
 
+- **Three documentation-as-data clouds** in opt-in `clouds_extra`:
+  `scaleway_ranges` (11 v4 + 1 v6), `ibm_cloud_classic` (60 v4) and
+  `ovh_web_hosting_clusters` (259 v4 + 66 v6). None of these three ever built
+  an ip-ranges endpoint; the authoritative list is a docs page, and all three
+  now serve that page as raw markdown from their own domain. The OVH recipe's
+  prize is the 24 cluster NAT gateways: every PHP script on an OVH shared
+  host egresses from one of them, so a request from `91.134.248.230` is
+  server-side automation by construction.
+
+  The IBM parser is the most defensive in the gem, and deliberately so: 509
+  of the 759 CIDRs on that page are RFC1918 back-end space. Ingesting the
+  document whole would label every home and office LAN on earth as IBM
+  hosting. It reads three allowlisted sections and applies an RFC1918 guard
+  on top, so a renamed heading degrades to "too few rows" (keep-stale)
+  instead of to a catastrophe. The Red Hat and Windows sections are excluded
+  because they list endpoints an IBM CUSTOMER must reach — Red Hat and
+  Microsoft WSUS — which are not IBM address space.
+
 - **Parsers**: `crawler_ipranges_json` (Google's envelope, copied verbatim by
   Bing, OpenAI, Anthropic, Apple, Perplexity, DuckDuckGo and Common Crawl, so
   a new crawler feed is now a manifest-only change), `amazon_bot_html_json`,
   `github_meta_json`, `fastly_public_ip_list_json`,
-  `atlassian_ipranges_json`, `json_string_array`.
+  `atlassian_ipranges_json`, `json_string_array`,
+  `scaleway_network_mdx`, `ibm_cloud_ip_ranges_markdown`,
+  `ovh_web_hosting_cluster_md`.
 
 - Context flags are now derived from whichever `flag:*` overlays a snapshot
   holds rather than two hardcoded names, so a new flag source in

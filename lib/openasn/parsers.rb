@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "ipaddr"
 require "json"
 require "zlib"
 
@@ -213,6 +214,172 @@ module OpenASN
 
       tokens = data.select { |v| v.is_a?(String) }.map(&:strip).reject(&:empty?)
       raise ParseError, "json_string_array: empty — schema changed?" if tokens.empty?
+
+      tokens
+    end
+
+    # --- documentation-as-data: clouds that publish ranges only in docs -------
+    #
+    # Three big hosters (Scaleway, IBM Cloud Classic, OVHcloud shared
+    # hosting) never built an ip-ranges endpoint; the authoritative list is
+    # a page in their documentation. All three now serve that page as raw
+    # markdown from their own domain — an LLM-era docs-platform feature that
+    # happens to be the cleanest machine path they have. Markdown is a
+    # weaker contract than JSON, so each of these parsers is strict about
+    # the ONE structure it reads and raises on anything else: a silent
+    # rewrite must become keep_stale, never a wrong answer.
+
+    # Scaleway https://www.scaleway.com/en/docs/account/reference-content/
+    # scaleway-network-information.md — MDX with a single authoritative
+    # section:
+    #
+    #   ## IP ranges used by Scaleway
+    #   ### IPv4
+    #   * `62.210.0.0/16`
+    #
+    # SCOPE IS THE WHOLE POINT. The very next H2 ("## DNS cache servers and
+    # NTP servers") lists BARE resolver addresses in the same bullet style,
+    # and a later section names the Dedibox monitoring subnet. Only the one
+    # section is Scaleway's statement of the space it routes, so we stop
+    # dead at the next H2.
+    register "scaleway_network_mdx" do |body|
+      in_section = false
+      cidrs = []
+      body.each_line do |line|
+        if line.start_with?("## ")
+          in_section = line.include?("IP ranges used by Scaleway")
+          next
+        end
+        next unless in_section
+
+        m = line.match(/\A\*\s+`([0-9a-fA-F:.]+\/\d{1,3})`\s*\z/)
+        cidrs << m[1] if m
+      end
+      if cidrs.length < 10
+        raise ParseError, "scaleway_network_mdx: found #{cidrs.length} CIDRs, expected >= 10 — page changed?"
+      end
+
+      cidrs
+    end
+
+    # IBM Cloud Classic https://cloud.ibm.com/docs/infrastructure-hub?topic=
+    # infrastructure-hub-ibm-cloud-ip-ranges&format=markdown
+    #
+    # 759 CIDRs, of which 509 are RFC1918. Ingesting this document whole
+    # would label every home and office LAN on earth as IBM hosting, so the
+    # parser is defensive twice over:
+    #
+    #   1. SECTION ALLOWLIST — only "Front-end (public) network", "Load
+    #      balancer IPs" and "Legacy networks" are public IBM space. The
+    #      back-end, service network and SSL VPN sections are RFC1918; the
+    #      "Red Hat Enterprise Linux server requirements" and "Windows
+    #      virtual server instance requirements" sections list endpoints a
+    #      CUSTOMER must reach (Red Hat, Microsoft WSUS) and must never be
+    #      attributed to IBM.
+    #   2. RFC1918 GUARD — applied anyway, so a renamed heading degrades to
+    #      "too few rows" rather than to a catastrophe.
+    #
+    # "Legacy networks" is in the allowlist on evidence, not on faith: its
+    # rows are ex-ThePlanet/SoftLayer space and ARIN still answers IBM for
+    # them (checked 2026-09-12 — 209.85.4.0 → NETBLK-THEPLANET-BLK-EV1-15,
+    # registrant "IBM Cloud"; 12.96.160.0 → SOFTLAYER TECHNOLOGIES, INC).
+    #
+    # Row shape is `|dal05|Dallas |50.23.203.0/24  \n 108.168.157.0/24|`
+    # where that `\n` is a LITERAL backslash-n inside one line, not a
+    # newline: several data centers pack multiple CIDRs into one cell. The
+    # legacy table has a single column and one row is a bare address.
+    IBM_PUBLIC_SECTIONS = ["Front-end (public) network", "Load balancer IPs", "Legacy networks"].freeze
+    RFC1918 = [IPAddr.new("10.0.0.0/8"), IPAddr.new("172.16.0.0/12"), IPAddr.new("192.168.0.0/16")].freeze
+
+    register "ibm_cloud_ip_ranges_markdown" do |body|
+      in_section = false
+      cidrs = []
+      body.each_line do |line|
+        if line.start_with?("## ")
+          heading = line.sub(/\A##\s*/, "").strip
+          in_section = IBM_PUBLIC_SECTIONS.include?(heading)
+          next
+        elsif line.start_with?("### ")
+          in_section = false # subsections of a public section are never public
+          next
+        end
+        next unless in_section && line.start_with?("|")
+
+        # 3-column tables put the ranges in column 3; the single-column
+        # legacy table puts them in column 1. Scan every cell and let the
+        # CIDR shape decide — header and separator rows never match.
+        line.split("|").each do |cell|
+          cell.split(/\s*\\n\s*/).each do |token|
+            t = token.strip
+            next unless t.match?(%r{\A\d{1,3}(\.\d{1,3}){3}(/\d{1,2})?\z})
+
+            t += "/32" unless t.include?("/")
+            addr = begin
+              IPAddr.new(t)
+            rescue StandardError
+              nil
+            end
+            next if addr.nil? || RFC1918.any? { |p| p.include?(addr) }
+
+            cidrs << t
+          end
+        end
+      end
+      cidrs.uniq!
+      if cidrs.length < 50
+        raise ParseError, "ibm_cloud_ip_ranges_markdown: #{cidrs.length} public CIDRs, expected >= 50 — page changed?"
+      end
+
+      cidrs
+    end
+
+    # OVHcloud https://docs.ovhcloud.com/en/guides/web-cloud/web-hosting/
+    # clusters-and-shared-hosting-ip.md — 24 shared-hosting clusters, each
+    # with a per-country VIP table plus two fenced ```bash blocks holding a
+    # shared-CDN address and, crucially, the cluster's OUTGOING gateway.
+    #
+    # The 24 gateways are the valuable half: every PHP script on a cluster —
+    # thousands of tenant sites — makes its outbound requests from one of
+    # them, so a request a site receives from 91.134.248.230 is by
+    # construction server-side automation. (High tenancy is the flip side:
+    # consumers must not treat one of these as identifying a single actor.)
+    # The table VIPs are inbound-only but are equally OVH datacenter space,
+    # so we take both and emit every address as a host route.
+    #
+    # Read structurally rather than by bare regex: OVH's sibling docs cite
+    # third-party endpoints, and IBM's page above is the cautionary tale.
+    register "ovh_web_hosting_cluster_md" do |body|
+      tokens = []
+      pending_fenced_ip = false
+      in_fence = false
+      body.each_line do |line|
+        stripped = line.strip
+        if stripped.start_with?("```")
+          in_fence = !in_fence
+          pending_fenced_ip = false unless in_fence
+          next
+        end
+        if in_fence
+          tokens << "#{stripped}/32" if pending_fenced_ip && stripped.match?(/\A\d{1,3}(\.\d{1,3}){3}\z/)
+          next
+        end
+        if stripped.include?("outgoing IP address") || stripped.include?("Shared CDN")
+          pending_fenced_ip = true
+          next
+        end
+        next unless stripped.start_with?("|")
+
+        cells = stripped.split("|").map(&:strip)
+        # | Country | Country Code | IPv4 | IPv6 | -> ["", country, cc, v4, v6]
+        next unless cells.length >= 5 && cells[2].match?(/\A[A-Z]{2}\z/)
+
+        tokens << "#{cells[3]}/32" if cells[3].match?(/\A\d{1,3}(\.\d{1,3}){3}\z/)
+        tokens << "#{cells[4]}/128" if cells[4].match?(/\A[0-9a-fA-F:]+\z/) && cells[4].include?("::")
+      end
+      tokens.uniq!
+      if tokens.length < 100
+        raise ParseError, "ovh_web_hosting_cluster_md: #{tokens.length} addresses, expected >= 100 — page changed?"
+      end
 
       tokens
     end

@@ -405,6 +405,39 @@
       "notes": "Huawei Cloud's RFC 8805 geofeed. Found via RFC 9632 whois discovery, not documentation: the geofeed: attribute is published on five Huawei Cloud APNIC objects, which is what makes this a first-party publication rather than a scrape. Verified live 2026-09-05: 200, 33 KB, 927 rows -> 868 v4 + 59 v6. Uses the existing geofeed_csv parser unchanged."
     },
     {
+      "id": "scaleway_ranges",
+      "url": "https://www.scaleway.com/en/docs/account/reference-content/scaleway-network-information.md",
+      "parser": "scaleway_network_mdx",
+      "maps_to": "hosting",
+      "provider": "scaleway",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Scaleway (Online SAS / Iliad) never built an ip-ranges endpoint; the authoritative statement is a documentation page, and scaleway.com serves it as raw markdown at the .md URL above (200, text/markdown, 2373 bytes, verified live 2026-09-12 - byte-identical to the MDX in Scaleway's own docs repo, so we cite the first-party domain and depend on nobody else). Section '## IP ranges used by Scaleway' -> 12 v4 + 1 v6, merged to 11 v4 + 1 v6. The parser STOPS at the next H2 on purpose: the following section lists bare DNS/NTP resolver addresses in the same bullet style and is not prefix data. FP note: 78.232.0.0/16 sits inside historically-Free-SAS residential space but RIPE gives netname SCALEWAY / org Scaleway / ASSIGNED PA, so labelling it hosting corrects stale geo data rather than mislabelling people. Opt-in because Scaleway's ASNs (AS12876, AS51207) already carry hosting from the core artifact; this recipe buys range-level precision and provider attribution."
+    },
+    {
+      "id": "ibm_cloud_classic",
+      "url": "https://cloud.ibm.com/docs/infrastructure-hub?topic=infrastructure-hub-ibm-cloud-ip-ranges&format=markdown",
+      "parser": "ibm_cloud_ip_ranges_markdown",
+      "maps_to": "hosting",
+      "provider": "ibm_cloud",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "IBM Cloud Classic (ex-SoftLayer) front-end, load-balancer and legacy public ranges. IBM's docs platform serves any page as markdown with &format=markdown (documented at https://cloud.ibm.com/docs/llms.txt); the human URL is a JS-rendered SPA containing ZERO CIDRs, so the markdown export is the only machine path. Verified live 2026-09-12: 200, text/markdown, 37832 bytes, last-updated 2026-06-09. DANGER, and the reason the parser is section-filtered AND RFC1918-guarded: 509 of the document's 759 CIDRs are private space (10/8, 172.16/12, 192.168/16) belonging to the back-end, service and SSL VPN networks - ingesting the page whole would label every home and office LAN on earth as IBM hosting. The parser reads only 'Front-end (public) network', 'Load balancer IPs' and 'Legacy networks' -> 90 tokens, 60 merged v4, 0 v6. Deliberately EXCLUDED: 'Red Hat Enterprise Linux server requirements' and 'Windows virtual server instance requirements', which list endpoints an IBM customer must reach (Red Hat, Microsoft WSUS) and are not IBM address space. Coverage is thin by design - this is IBM's own infrastructure subnets, not customer allocations, and IBM Cloud VPC (the modern platform) is not covered anywhere. Do NOT substitute https://ibm.biz/cidr-calculator: IBM itself disclaims it as a community tool."
+    },
+    {
+      "id": "ovh_web_hosting_clusters",
+      "url": "https://docs.ovhcloud.com/en/guides/web-cloud/web-hosting/clusters-and-shared-hosting-ip.md",
+      "parser": "ovh_web_hosting_cluster_md",
+      "maps_to": "hosting",
+      "provider": "ovh_shared_hosting",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "OVHcloud shared web hosting: 24 clusters, each publishing per-country inbound VIPs plus a shared-CDN address and - the valuable part - ONE outgoing NAT gateway. Every PHP script on a cluster egresses from that single address, so traffic a site receives from e.g. 91.134.248.230 is by construction server-side automation, never a human browsing. OVH invites machine consumption in the page body ('this page is available as Markdown at ...clusters-and-shared-hosting-ip.md'); verified live 2026-09-12: 200, text/markdown, 37840 bytes, lastUpdated 2026-07-21, 24/24 gateways captured, 479 host routes -> 259 v4 + 66 v6. FETCH GOTCHA: the same URL WITH a trailing slash returns a 404 page. CONSUMER WARNING: the gateways are high-tenancy shared egress - thousands of tenant sites behind one address - so per-IP reputation decisions punish everyone on the cluster at once; classify, do not block. SCOPE: shared hosting only. OVH's bare metal, VPS and Public Cloud estates - the overwhelming majority of OVH space and of OVH-sourced abuse - are published nowhere: no ip-ranges endpoint exists, geofeed.ovh.net does not resolve, and OVH's RIPE objects carry no geofeed: attribute (checked 2026-09-05)."
+    },
+    {
       "id": "mistralai_user",
       "url": "https://mistral.ai/mistralai-user-ips.json",
       "parser": "crawler_ipranges_json",
