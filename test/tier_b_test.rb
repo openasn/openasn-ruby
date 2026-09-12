@@ -963,6 +963,48 @@ class BundledManifestConsistencyTest < Minitest::Test
                  OpenASN::Configuration::TIER_B_SOURCE_MAP.keys.sort
   end
 
+  # The manifest's per-source `enabled_default` and the gem's per-GROUP default
+  # are two statements of the same fact, made in two repos, and only the gem's
+  # one has any effect: the executor asks `enabled_tier_b_source_ids`, which
+  # consults TIER_B_DEFAULTS, and never reads `enabled_default` at all.
+  #
+  # So a disagreement is invisible at runtime and actively misleading to
+  # everyone else: the manifest is what a fourth-language client, a reviewer,
+  # or PROVIDER_SOURCES.md reads to decide whether a source ships on. A recipe
+  # documented `enabled_default: true` that lands in an opt-in group is a
+  # source the docs promise and the gem never fetches.
+  #
+  # Whole groups may of course flip on or off — that is one edit here and one
+  # in the manifest, which is exactly the coupling this test exists to force.
+  def test_manifest_enabled_default_agrees_with_the_groups_default
+    group_of = {}
+    OpenASN::Configuration::TIER_B_SOURCE_MAP.each do |group, ids|
+      ids.each { |id| group_of[id] = group }
+    end
+
+    disagreements = MANIFEST["sources"].filter_map do |s|
+      group = group_of[s["id"]]
+      next unless group # orphans are already a failure in their own test
+
+      group_default = OpenASN::Configuration::TIER_B_DEFAULTS.fetch(group)
+      next if s["enabled_default"] == group_default
+
+      "#{s['id']}: manifest says #{s['enabled_default'].inspect}, " \
+        "but group #{group} defaults to #{group_default.inspect}"
+    end
+
+    assert_empty disagreements,
+                 "fetch-manifest enabled_default disagrees with TIER_B_DEFAULTS:\n  #{disagreements.join("\n  ")}"
+  end
+
+  # A source with no `enabled_default` key reads as "off" to a human and as
+  # nil to a parser, while the gem happily fetches it if its group is on.
+  def test_every_source_states_an_enabled_default
+    silent = MANIFEST["sources"].reject { |s| [true, false].include?(s["enabled_default"]) }
+    assert_empty silent.map { |s| s["id"] },
+                 "sources with a missing or non-boolean enabled_default"
+  end
+
   def test_every_source_declares_the_fields_the_executor_relies_on
     MANIFEST["sources"].each do |s|
       assert s["id"].is_a?(String), "source without an id: #{s.inspect}"

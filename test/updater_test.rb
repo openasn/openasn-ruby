@@ -126,11 +126,41 @@ class UpdaterTest < Minitest::Test
       f.flock(File::LOCK_EX)
       sleep 5
     RUBY
-    sleep 0.4 # let the child grab the lock
+
+    # Do NOT sleep a fixed interval hoping the child won the race: spawning a
+    # Ruby VM takes as long as the machine is busy, and on a loaded box 0.4s
+    # was not enough about half the time — the parent took the lock itself and
+    # got :updated. Poll for the observable fact instead: as long as WE can
+    # still take the lock non-blockingly, the child has not got it yet.
+    assert wait_until(timeout: 15) { !try_lock_free?(File.join(@test_data_dir, ".update.lock")) },
+           "child process never acquired the update lock"
+
     assert_equal :locked, OpenASN.update!
   ensure
-    Process.kill("TERM", holder) if holder
-    Process.wait(holder) if holder
+    if holder
+      Process.kill("TERM", holder)
+      Process.wait(holder)
+    end
+  end
+
+  # true when the lock is free (we grabbed it and immediately let go).
+  def try_lock_free?(path)
+    File.open(path, File::RDWR | File::CREAT) do |f|
+      next false unless f.flock(File::LOCK_EX | File::LOCK_NB)
+
+      f.flock(File::LOCK_UN)
+      true
+    end
+  end
+
+  def wait_until(timeout:, interval: 0.02)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
+    loop do
+      return true if yield
+      return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+      sleep interval
+    end
   end
 
   def test_pin_version_changes_release_url
