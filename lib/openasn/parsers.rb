@@ -72,6 +72,44 @@ module OpenASN
       end
     end
 
+    # RFC 8805 geofeed again, but refusing to WIDEN a row.
+    #
+    # Cisco's SSE feed publishes 142 single reserved egress addresses with a
+    # bogus /32 mask: `2603:5004:e0:107::135b/32`. Handing that to IPAddr
+    # silently masks it to `2603:5004::/32` — a 2^96 block — and would stamp
+    # enterprise_gateway across all of it on the evidence of one host route.
+    # (ARIN says 2603:5000::/24 is "Cisco Systems Cloud Division", so the
+    # widened claim would not be *false*; it would just be an enormous claim
+    # built from a pinhole. Prefer false negatives.)
+    #
+    # So: a row whose address has bits set below its stated prefix length is
+    # emitted as a host route instead. Rows that are already exact networks
+    # pass through untouched, which is every IPv4 row and 267 of 409 IPv6
+    # rows in that feed as of 2026-09-12.
+    register "geofeed_csv_no_widen" do |body|
+      tokens = body.each_line.filter_map do |line|
+        t = line.strip
+        next if t.empty? || t.start_with?("#")
+
+        token = t.split(",", 2).first.to_s.strip
+        next if token.empty?
+
+        address, length = token.split("/", 2)
+        next token unless length
+
+        begin
+          exact = IPAddr.new(address)
+          masked = IPAddr.new(token)
+          exact == masked ? token : "#{address}/#{exact.ipv6? ? 128 : 32}"
+        rescue StandardError
+          token # junk falls through and CidrUtils drops it
+        end
+      end
+      raise ParseError, "geofeed_csv_no_widen: no rows — feed empty or moved?" if tokens.empty?
+
+      tokens
+    end
+
     # --- structured cloud publications ---------------------------------------
 
     register "aws_json" do |body|
@@ -216,6 +254,40 @@ module OpenASN
       raise ParseError, "json_string_array: empty — schema changed?" if tokens.empty?
 
       tokens
+    end
+
+    # Cato Networks publishes its SASE PoP ranges in a knowledge-base
+    # article — "We recommend that you add the IP ranges owned by Cato
+    # Networks to the relevant ACL" — which is our exact use case. The page
+    # is 1.6 MB of Document360 Angular SSR and the article body arrives
+    # HTML-escaped inside an attribute, but digits, dots and slashes are not
+    # escaped, so a CIDR scan over the raw response is both the simplest and
+    # the most drift-tolerant reader. Measured 2026-09-12: exactly 43 CIDRs,
+    # zero false positives from nav, footer, scripts or CSS.
+    #
+    # DO NOT try to parse the per-PoP "IP Range" tables instead. A single
+    # cell concatenates multiple dash-delimited ranges with no separator
+    # ("140.82.194.1 - 140.82.194.254113.30.130.1 - 113.30.130.254"), which
+    # yields corrupt octets like "06.39.250.192". Requiring a prefix length
+    # is what keeps those out, so the /NN is load-bearing, not incidental.
+    CATO_PREFIX_LENGTHS = (19..32).freeze
+
+    register "cato_pop_html" do |body|
+      cidrs = body.scan(%r{\b(?:\d{1,3}\.){3}\d{1,3}/\d{1,2}\b}).uniq.select do |cidr|
+        length = cidr.split("/").last.to_i
+        next false unless CATO_PREFIX_LENGTHS.cover?(length)
+
+        begin
+          IPAddr.new(cidr).ipv4?
+        rescue StandardError
+          false
+        end
+      end
+      unless (30..200).cover?(cidrs.length)
+        raise ParseError, "cato_pop_html: #{cidrs.length} CIDRs, expected 30..200 — page changed?"
+      end
+
+      cidrs
     end
 
     # --- documentation-as-data: clouds that publish ranges only in docs -------

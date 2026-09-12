@@ -62,13 +62,22 @@ without growing the verdict enum.
   because they list endpoints an IBM CUSTOMER must reach — Red Hat and
   Microsoft WSUS — which are not IBM address space.
 
+- **SWG/SASE egress beyond Zscaler**, in a new opt-in `swg_egress` switch:
+  `cisco_sse_geofeed` (86 v4 + 65 v6) and `cato_pop_ranges` (40 v4). One
+  Cisco feed covers both Umbrella and Cisco Secure Access. `zscaler` keeps
+  its own switch — config keys are append-only.
+
 - **Parsers**: `crawler_ipranges_json` (Google's envelope, copied verbatim by
   Bing, OpenAI, Anthropic, Apple, Perplexity, DuckDuckGo and Common Crawl, so
   a new crawler feed is now a manifest-only change), `amazon_bot_html_json`,
   `github_meta_json`, `fastly_public_ip_list_json`,
   `atlassian_ipranges_json`, `json_string_array`,
   `scaleway_network_mdx`, `ibm_cloud_ip_ranges_markdown`,
-  `ovh_web_hosting_cluster_md`.
+  `ovh_web_hosting_cluster_md`, `cato_pop_html`, and `geofeed_csv_no_widen` —
+  RFC 8805 again, but refusing to WIDEN a row. Cisco publishes 142 single
+  egress addresses with a bogus /32 mask; handing those to IPAddr silently
+  claims 2^96 addresses from a pinhole, so a row whose address has bits set
+  below its stated prefix length becomes a host route instead.
 
 - Context flags are now derived from whichever `flag:*` overlays a snapshot
   holds rather than two hardcoded names, so a new flag source in

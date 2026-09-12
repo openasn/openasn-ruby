@@ -62,6 +62,10 @@ module OpenASN
     #                    (provider hostnames resolved locally; opt-in)
     #   public_relays  → vpngate vpnbook freevpn.us (volunteer/free public VPN relays)
     #   zscaler        → zscaler zscaler_gov        (:enterprise_gateway ranges)
+    #   swg_egress     → cisco_sse_geofeed cato_pop_ranges (the other SWG/SASE vendors
+    #                    publish egress: one Cisco feed covers both Umbrella and
+    #                    Secure Access. Zscaler keeps its own switch for
+    #                    backwards compatibility - config keys are append-only.)
     #   nazgul_mixed   → nazgul_mixed               (flag only, never :vpn)
     attr_accessor :tier_b
 
@@ -94,6 +98,7 @@ module OpenASN
       verified_crawlers: true,        # small official recognition lists; the agent-era answer
       verified_crawlers_extra: false, # coarse, shared-tenant, stale or unquotable lists
       zscaler: false,       # ASN-level enterprise_gateway overrides already cover Zscaler
+      swg_egress: false,    # non-Zscaler SWG/SASE vendor egress (Cisco SSE, Cato); opt-in
       vpn_providers: true,
       vpn_heavy: false,     # e.g. NordVPN's ~35MB API response; opt in deliberately
       vpn_dns: false,       # provider-published hostnames resolved by local DNS; opt in deliberately
@@ -116,6 +121,7 @@ module OpenASN
       verified_crawlers_extra: %w[bingbot google_infra google_user_triggered_fetchers_gae
                                   amazonbot amzn_searchbot amzn_user ahrefsbot],
       zscaler: %w[zscaler zscaler_gov],
+      swg_egress: %w[cisco_sse_geofeed cato_pop_ranges],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
                         privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_status_servers
                         anonine_status],

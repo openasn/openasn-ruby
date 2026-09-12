@@ -930,6 +930,28 @@
       "notes": "Zscaler's FedRAMP-authorized US government cloud, same CENR API and JSON shape as zscaler.net. Verified live 2026-09-05: 200, 30 ranges -> 6 v4 + 7 v6 networks, ALL 30 absent from zscaler.net - this is the one sibling cloud that is not a duplicate. Behind these IPs are US federal/state agency employees browsing from the office, so the enterprise_gateway (likely-human) semantics are exactly right."
     },
     {
+      "id": "cisco_sse_geofeed",
+      "url": "https://geofeed.network.strln.net/",
+      "parser": "geofeed_csv_no_widen",
+      "maps_to": "enterprise_gateway",
+      "provider": "cisco_sse",
+      "cadence_hours": 24,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Cisco Secure Service Edge egress - ONE feed covers BOTH Umbrella SWG and Cisco Secure Access ('The feed includes deployed egress prefixes for Cisco SSE products, including Secure Access and Umbrella'), so no per-product recipe is needed. It is an RFC 8805 geofeed, and Cisco self-publishes the URL in RIR whois as an RFC 9092 geofeed reference (whois 151.186.1.1 -> 'remarks: Geofeed https://geofeed.network.strln.net/'), which is what makes unattended machine consumption the documented purpose rather than a scrape. Host provenance verified: strln.net whois registrant 'OpenDNS Hostmaster', 170 W. Tasman Drive San Jose (Cisco HQ), NS AUTH1/2/3.OPENDNS.COM. Verified live 2026-09-12: 200, 56539 bytes, Last-Modified same day, 1865 records -> 86 v4 + 65 v6 merged ranges. Content-Type is binary/octet-stream, NOT text/csv - do not content-type-sniff. Uses geofeed_csv_no_widen rather than geofeed_csv because 142 IPv6 rows carry a bogus /32 on a single host address ('2603:5004:e0:107::135b/32'); masking those would claim all of 2603:5004::/32 on the evidence of a pinhole. THE RESOLVERS ARE CORRECTLY ABSENT: 208.67.222.0/24 and 208.67.220.0/24 (the OpenDNS public resolvers) are NOT in the feed, so using it verbatim does not walk into the D-ENRICH-1 trap of labelling a public DNS resolver enterprise_gateway. Coverage caveat: the feed lists DEPLOYED prefixes only, so documented-but-unused allowlist space lags - Cisco documents 9.240.0.0/15 as shared SWG egress and there is not one 9.x record in the feed. That biases us toward false negatives, which is the preference."
+    },
+    {
+      "id": "cato_pop_ranges",
+      "url": "https://knowledge.catonetworks.com/docs/production-pop-guide",
+      "parser": "cato_pop_html",
+      "maps_to": "enterprise_gateway",
+      "provider": "cato",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Cato Networks SASE PoP egress. Cato publishes the list expressly for third-party allowlisting: 'We recommend that you add the IP ranges owned by Cato Networks to the relevant ACL ... to allow traffic to the Cato Cloud'. knowledge.catonetworks.com serves it unauthenticated (robots.txt is 'User-agent: * / Allow: /' with no Disallow); verified live 2026-09-12: 200, text/html, 1,644,504 bytes -> 43 CIDRs -> 40 v4 ranges, 0 v6. USE THIS HOST ONLY: www.catonetworks.com sits behind Imperva/Incapsula and answers automated clients with a 949-byte incident page, and support.catonetworks.com (Zendesk) 403s. The CSV attachment on cdn.document360.io is nicer but its URL carries a 15-minute Azure SAS token and 404s without it, so it cannot be a manifest URL. Cato's ASN is AS13150 (RIPE RDAP: handle AS13150, name CATON, org ORG-CNL17-RIPE 'CATO NETWORKS LTD'; RPKI ROAs to AS13150 for 45.62.176.0/20, 199.27.32.0/19, 216.205.112.0/20). NOT AS37927, which is NOMURATRADE in JPNIC. An AS13150 override would be cheaper, but this list also captures leased China / Casablanca / Singapore / Seoul space that AS13150 does not announce - and that leased space is also the recipe's one real risk: if Cato hands a Chinese carrier range back, it reverts to ordinary ISP allocation and we would carry a stale enterprise_gateway label for up to a week. Acceptable because enterprise_gateway is a likely-human, never-blocking verdict. Spot-verified in ARIN RDAP 2026-09-12: 149.20.192.0 -> CATO-NETWORKSINC, 150.195.192.0 and 216.194.96.0 -> CN-238, 45.62.176.0 -> CATO-NETWORKS-INC, all registrant 'Cato Networks Inc'."
+    },
+    {
       "id": "nazgul_mixed",
       "url": "https://raw.githubusercontent.com/NazgulCoder/IPLists/main/output/vpn-ipv4.txt",
       "url_ipv6": "https://raw.githubusercontent.com/NazgulCoder/IPLists/main/output/vpn-ipv6.txt",

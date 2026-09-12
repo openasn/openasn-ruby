@@ -350,6 +350,45 @@ class ParsersTest < Minitest::Test
     assert_equal ["13.52.5.0/24"], P.parse("atlassian_ipranges_json", body)
   end
 
+  # Cisco's SSE geofeed publishes 142 single egress addresses with a bogus
+  # /32 mask. Widening one of those claims 2^96 addresses on the evidence of
+  # a pinhole, so a row with host bits set becomes a host route.
+  def test_geofeed_csv_no_widen_host_routes_instead_of_widening
+    body = <<~CSV
+      46.255.40.0/24,US,US-TX,Dallas,
+      2a04:e4c0:aa::/48,AE,,Dubai,
+      2603:5004:e0:107::135b/32,DE,DE-HE,FRANKFURT,
+      151.186.172.35/32,,
+      198.51.100.7/24,US,,,
+    CSV
+    tokens = P.parse("geofeed_csv_no_widen", body)
+    assert_equal ["46.255.40.0/24", "2a04:e4c0:aa::/48", "2603:5004:e0:107::135b/128",
+                  "151.186.172.35/32", "198.51.100.7/32"], tokens
+  end
+
+  def test_geofeed_csv_no_widen_refuses_an_empty_feed
+    assert_raises(P::ParseError) { P.parse("geofeed_csv_no_widen", "\n# nothing here\n") }
+  end
+
+  # Cato's page concatenates dash-delimited ranges inside single table cells
+  # ("140.82.194.1 - 140.82.194.254113.30.130.1 - …"), which is how you get
+  # corrupt octets out of it. Requiring a prefix length is what keeps them out.
+  def test_cato_pop_html_takes_cidrs_and_ignores_the_dash_range_tables
+    body = +"<html><body><td>140.82.194.1 - 140.82.194.254113.30.130.1 - 113.30.130.254</td>"
+    body << "<td>version 1.2.3/4</td>"
+    35.times { |i| body << "<p>45.#{62 + i}.176.0/20</p>" }
+    body << "<p>216.205.112.0/20</p><p>216.205.112.0/20</p></body></html>"
+    tokens = P.parse("cato_pop_html", body)
+    assert_equal 36, tokens.length          # 35 unique + one duplicate collapsed
+    assert_includes tokens, "45.62.176.0/20"
+    refute_includes tokens, "1.2.3/4"       # prefix length 4 is outside 19..32
+    refute(tokens.any? { |t| t.start_with?("06.") || t.start_with?("14.94") })
+  end
+
+  def test_cato_pop_html_refuses_a_page_that_lost_its_list
+    assert_raises(P::ParseError) { P.parse("cato_pop_html", "<html><p>45.62.176.0/20</p></html>") }
+  end
+
   # --- documentation-as-data clouds ------------------------------------------
 
   # Scaleway's page has TWO bullet lists of addresses. Only the first is
