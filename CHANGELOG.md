@@ -67,13 +67,17 @@ without growing the verdict enum.
   Cisco feed covers both Umbrella and Cisco Secure Access. `zscaler` keeps
   its own switch — config keys are append-only.
 
+- **`cryptostorm_configs`** in opt-in `vpn_dns` (138 first-party hostnames,
+  no new parser — `ovpn_zip_remote_hosts` reads it unchanged).
+
 - **Parsers**: `crawler_ipranges_json` (Google's envelope, copied verbatim by
   Bing, OpenAI, Anthropic, Apple, Perplexity, DuckDuckGo and Common Crawl, so
   a new crawler feed is now a manifest-only change), `amazon_bot_html_json`,
   `github_meta_json`, `fastly_public_ip_list_json`,
   `atlassian_ipranges_json`, `json_string_array`,
   `scaleway_network_mdx`, `ibm_cloud_ip_ranges_markdown`,
-  `ovh_web_hosting_cluster_md`, `cato_pop_html`, and `geofeed_csv_no_widen` —
+  `ovh_web_hosting_cluster_md`, `cato_pop_html`, `ovpn_client_entry_json`,
+  and `geofeed_csv_no_widen` —
   RFC 8805 again, but refusing to WIDEN a row. Cisco publishes 142 single
   egress addresses with a bogus /32 mask; handing those to IPAddr silently
   claims 2^96 addresses from a pinhole, so a row whose address has bits set
@@ -94,11 +98,17 @@ without growing the verdict enum.
   `verified_fetcher`, appended at the END (the to_h append-only contract).
 - `slickvpn_locations` parser rewritten for SlickVPN's site redesign: server
   addresses now come from each card's `data-host` copy button.
-- `windscribe_servers` is no longer `enabled_default` — every Windscribe path
-  now answers 403 with a Cloudflare challenge, and OpenASN does not defeat bot
-  challenges. The source and its group membership stay: Tier B runs on the end
-  user's network, so the block may be vantage-specific, and keep-stale means an
-  overlay fetched earlier keeps classifying.
+- `windscribe_servers` is `enabled_default` again. It was demoted on
+  2026-09-05 when every Windscribe path answered 403 with a Cloudflare
+  challenge; on 2026-09-12 a plain identifying User-Agent gets 200 and 395 v4
+  ranges from two independent checks. The demotion reasoning still stands for
+  next time: OpenASN does not defeat bot challenges, Tier B runs on the end
+  user's network so a block seen from here may not exist there, and keep-stale
+  means an overlay fetched earlier keeps classifying.
+- `ovpn_status_servers` (32 URLs, one per datacenter) is replaced by
+  `ovpn_servers`, OVPN's client bootstrap API — the same 96 exact IPs and 34
+  merged ranges in ONE request. A 32x reduction in traffic aimed at a
+  provider's own infrastructure, for free.
 
 ### Removed
 

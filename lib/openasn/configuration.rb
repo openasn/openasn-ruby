@@ -58,7 +58,7 @@ module OpenASN
     #   vpn_heavy      → nordvpn                    (large/fragile provider API)
     #   vpn_dns        → surfshark ipvanish privatevpn purevpn torguard fastestvpn
     #                    tunnelbear strongvpn vyprvpn giganews slickvpn
-    #                    azirevpn vpn.ac trust.zone
+    #                    azirevpn vpn.ac trust.zone cryptostorm
     #                    (provider hostnames resolved locally; opt-in)
     #   public_relays  → vpngate vpnbook freevpn.us (volunteer/free public VPN relays)
     #   zscaler        → zscaler zscaler_gov        (:enterprise_gateway ranges)
@@ -123,14 +123,14 @@ module OpenASN
       zscaler: %w[zscaler zscaler_gov],
       swg_egress: %w[cisco_sse_geofeed cato_pop_ranges],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
-                        privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_status_servers
+                        privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_servers
                         anonine_status],
       vpn_heavy: %w[nordvpn_servers],
       vpn_dns: %w[surfshark_generic surfshark_static surfshark_obfuscated ipvanish_openvpn
                   privatevpn_openvpn purevpn_openvpn torguard_openvpn_tcp torguard_openvpn_udp
                   fastestvpn_tcp fastestvpn_udp tunnelbear_openvpn strongvpn_locations
                   vyprvpn_openvpn giganews_vyprvpn_hosts slickvpn_locations azirevpn_locations
-                  vpnac_status trustzone_servers],
+                  vpnac_status trustzone_servers cryptostorm_configs],
       public_relays: %w[vpngate vpnbook_openvpn freevpn_us_servers],
       nazgul_mixed: %w[nazgul_mixed]
     }.freeze

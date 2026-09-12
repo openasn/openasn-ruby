@@ -389,6 +389,30 @@ class ParsersTest < Minitest::Test
     assert_raises(P::ParseError) { P.parse("cato_pop_html", "<html><p>45.62.176.0/20</p></html>") }
   end
 
+  # OVPN's client bootstrap API: whole fleet in one request. An offline
+  # server is still OVPN egress, so `online` must NOT be a filter — and
+  # nothing outside `datacenters` is read, because `shadowsocks` holds a
+  # shared credential.
+  def test_ovpn_client_entry_json
+    body = JSON.generate({ success: true,
+                           datacenters: [{ slug: "vienna", city: "Vienna",
+                                           ping_address: "37.120.212.227",
+                                           pools: ["pool-1.prd.at.vienna.ovpn.com"],
+                                           servers: [{ ip: "37.120.212.227", ptr: "vpn44.prd.vienna.ovpn.com",
+                                                       online: true },
+                                                     { ip: "37.120.212.228", online: false }] }],
+                           shadowsocks: { password: "must-not-leak" } })
+    assert_equal ["37.120.212.227", "37.120.212.228"], P.parse("ovpn_client_entry_json", body)
+  end
+
+  def test_ovpn_client_entry_json_rejects_drift
+    assert_raises(P::ParseError) { P.parse("ovpn_client_entry_json", JSON.generate({ datacenters: [] })) }
+    assert_raises(P::ParseError) { P.parse("ovpn_client_entry_json", JSON.generate({ success: true })) }
+    assert_raises(P::ParseError) do
+      P.parse("ovpn_client_entry_json", JSON.generate({ success: true, datacenters: [{ slug: "x" }] }))
+    end
+  end
+
   # --- documentation-as-data clouds ------------------------------------------
 
   # Scaleway's page has TWO bullet lists of addresses. Only the first is

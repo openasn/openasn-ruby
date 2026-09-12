@@ -537,8 +537,8 @@
       "provider": "Windscribe",
       "cadence_hours": 24,
       "on_failure": "keep_stale",
-      "enabled_default": false,
-      "notes": "First-party Windscribe mobile server list JSON. Parser collects active locations' ping_ip and node ip/ip2/ip3 exact IPs; hostnames are ignored because OpenASN does not do DNS expansion inside Tier B. RECOMMENDATION CHANGED 2026-09-05 (was true): every assets.windscribe.com and api.windscribe.com path now answers 403 with a Cloudflare 'Sorry, you have been blocked' interstitial to a plain identifying User-Agent. OpenASN does not defeat bot challenges (see D-CUR-1), so this is off by default rather than a daily guaranteed failure for every client. The recipe is kept because Tier B runs on the END USER's network and the block may be vantage-specific; clients that fetch it successfully still get exact Windscribe exit IPs, and keep_stale means an already-fetched overlay keeps classifying."
+      "enabled_default": true,
+      "notes": "Windscribe's first-party mobile client server list: exact node/ping IPs. Live 2026-09-12: 200, application/json, 305 KB, 1076 tokens -> 395 v4 ranges. THE 403 IS GONE. On 2026-09-05 every Windscribe path answered with a Cloudflare challenge interstitial and this recipe was demoted to opt-in; on 2026-09-12 a plain unauthenticated GET with a descriptive User-Agent returns 200 from two independent checks (the manifest health check and a separate live probe). Restored to enabled_default. If it 403s again, that is a CDN policy flap and not a takedown - keep_stale means an overlay fetched earlier keeps classifying, and Tier B runs on the end user's own network, so a block seen here may not exist there. Shape unchanged: data[] locations -> groups[] -> nodes[]; union groups[].ping_ip with nodes[].ip/.ip2/.ip3 (ip2 and ip3 are optional). A flatter fallback with the same node IPs lives at https://assets.windscribe.com/serverlist/openvpn/1/0 (200, 229 KB, no groups[], no ping_ip)."
     },
     {
       "id": "nordvpn_servers",
@@ -596,48 +596,15 @@
       "notes": "First-party WorldVPN public server table. The page publishes exact IPs beside *.ocservvpn.com hostnames and says all listed servers support multiple VPN protocols, with OpenVPN profiles linked per row. Parser reads only table rows whose host cell is *.ocservvpn.com and emits the exact IP cell; no DNS expansion or whole-page IP scraping."
     },
     {
-      "id": "ovpn_status_servers",
-      "url": "https://status.ovpn.com/datacenters/sydney/servers",
-      "urls": [
-        "https://status.ovpn.com/datacenters/vienna/servers",
-        "https://status.ovpn.com/datacenters/toronto/servers",
-        "https://status.ovpn.com/datacenters/copenhagen/servers",
-        "https://status.ovpn.com/datacenters/helsinki/servers",
-        "https://status.ovpn.com/datacenters/paris/servers",
-        "https://status.ovpn.com/datacenters/frankfurt/servers",
-        "https://status.ovpn.com/datacenters/erfurt/servers",
-        "https://status.ovpn.com/datacenters/offenbach/servers",
-        "https://status.ovpn.com/datacenters/milan/servers",
-        "https://status.ovpn.com/datacenters/tokyo/servers",
-        "https://status.ovpn.com/datacenters/amsterdam/servers",
-        "https://status.ovpn.com/datacenters/oslo/servers",
-        "https://status.ovpn.com/datacenters/warsaw/servers",
-        "https://status.ovpn.com/datacenters/bucharest/servers",
-        "https://status.ovpn.com/datacenters/singapore/servers",
-        "https://status.ovpn.com/datacenters/madrid/servers",
-        "https://status.ovpn.com/datacenters/sthlm/servers",
-        "https://status.ovpn.com/datacenters/malmo/servers",
-        "https://status.ovpn.com/datacenters/gothenburg/servers",
-        "https://status.ovpn.com/datacenters/sundsvall/servers",
-        "https://status.ovpn.com/datacenters/zurich/servers",
-        "https://status.ovpn.com/datacenters/kyiv/servers",
-        "https://status.ovpn.com/datacenters/london/servers",
-        "https://status.ovpn.com/datacenters/losangeles/servers",
-        "https://status.ovpn.com/datacenters/miami/servers",
-        "https://status.ovpn.com/datacenters/newyork/servers",
-        "https://status.ovpn.com/datacenters/chicago/servers",
-        "https://status.ovpn.com/datacenters/atlanta/servers",
-        "https://status.ovpn.com/datacenters/dallas/servers",
-        "https://status.ovpn.com/datacenters/seattle/servers",
-        "https://status.ovpn.com/datacenters/denver/servers"
-      ],
-      "parser": "ovpn_status_servers_json",
+      "id": "ovpn_servers",
+      "url": "https://www.ovpn.com/v2/api/client/entry",
+      "parser": "ovpn_client_entry_json",
       "maps_to": "vpn",
       "provider": "OVPN",
       "cadence_hours": 24,
       "on_failure": "keep_stale",
       "enabled_default": true,
-      "notes": "First-party OVPN status API used by https://status.ovpn.com's Servers-List Vue component (GET /datacenters/{slug}/servers). Parser keeps exact IPs for rows whose online flag is not false; no config-form CSRF workflow, hostname inference, DNS expansion, ASN widening, or status-page HTML scraping."
+      "notes": "OVPN's first-party client bootstrap API: the whole fleet in ONE request. REPLACES ovpn_status_servers, which fetched thirty-two status-page endpoints (one per datacenter) for the same answer - verified 2026-09-12 that both yield 96 exact IPs -> 34 merged v4 ranges, so this is a 32x reduction in requests against a provider's own infrastructure at zero data cost. Live 2026-09-12: 200, application/json, 36177 bytes, 32 datacenters. Shape: {success, datacenters:[{slug, city, ping_address, pools:[hostname], servers:[{ip, ptr, online, load, public_key, wireguard_ports}]}], shadowsocks:{...}}. The parser takes datacenters[].ping_address and datacenters[].servers[].ip and DELIBERATELY DOES NOT filter on `online` - a server briefly down is still OVPN egress, and filtering would make the overlay flap. It also reads nothing outside `datacenters`: the sibling `shadowsocks` object carries a shared credential, so this response body must never be logged. No IPv6 anywhere in the fleet. The old recipe's id is retired rather than reused because its name described a status page that is no longer the source; overlays keyed to the old id are simply never loaded once the id leaves the feature map."
     },
     {
       "id": "anonine_status",
@@ -685,6 +652,18 @@
       "enabled_default": false,
       "resolve_hostnames": true,
       "notes": "Opt-in DNS-expanded source: Trust.Zone's first-party Zones & Servers page publishes exact *.trust.zone zone hostnames. Manual OpenVPN setup pages keep the downloadable .ovpn files hidden behind login, so this source intentionally uses only the public server page and local DNS resolution."
+    },
+    {
+      "id": "cryptostorm_configs",
+      "url": "https://cryptostorm.is/configs/ecc/configs.zip",
+      "parser": "ovpn_zip_remote_hosts",
+      "maps_to": "vpn",
+      "provider": "Cryptostorm",
+      "resolve_hostnames": true,
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": false,
+      "notes": "Cryptostorm's first-party OpenVPN config archive, served from an open directory index on the provider's own domain. Live 2026-09-12: 200, application/zip, 485048 bytes, 92 .ovpn members at the archive root -> 138 unique exact hostnames, ZERO literal IPs, which is why this is a DNS-expanded opt-in (vpn_dns) rather than an exact-IP recipe. No new parser needed: the existing ovpn_zip_remote_hosts reads it unchanged (its /\\Aremote\\s+([^\\s]+)/ pattern is not anchored on the two-token form, so Cryptostorm's three-token 'remote <host> <port> <proto>' lines parse correctly - confirmed by running it against the live archive). Each config carries THREE remote lines, one per mirror zone (cstorm.is / cstorm.net / cryptostorm.pw), and all three are emitted: dedupe on the full FQDN, not the leftmost label, or 138 collapses to 46. 'balancer.<zone>' is a round-robin name whose answers churn, which is normal for this class of source."
     },
     {
       "id": "surfshark_generic",

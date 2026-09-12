@@ -686,6 +686,35 @@ module OpenASN
       tokens.uniq
     end
 
+    # OVPN's client bootstrap API: the whole fleet in ONE request, where the
+    # status-page recipe it replaces needed thirty-two (one per datacenter).
+    # Shape: {"success": true, "datacenters": [{"slug", "city",
+    # "ping_address", "pools": [...], "servers": [{"ip", "ptr", "online", …}]}],
+    # "shadowsocks": {…}}.
+    #
+    # Two deliberate choices. We do NOT filter on `online`: a server that is
+    # briefly down is still OVPN's egress address and dropping it would make
+    # the overlay flap. And we read only `datacenters` — the sibling
+    # `shadowsocks` object carries a shared credential, so nothing outside
+    # `datacenters` is touched and the raw body must never be logged.
+    register "ovpn_client_entry_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "ovpn_client_entry_json: success != true — API changed?" unless data["success"] == true
+
+      centers = data["datacenters"]
+      raise ParseError, "ovpn_client_entry_json: expected datacenters array" unless centers.is_a?(Array)
+
+      tokens = centers.flat_map do |center|
+        next [] unless center.is_a?(Hash)
+
+        servers = center["servers"].is_a?(Array) ? center["servers"] : []
+        [center["ping_address"]] + servers.map { |s| s["ip"] if s.is_a?(Hash) }
+      end.compact.uniq
+      raise ParseError, "ovpn_client_entry_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens
+    end
+
     register "ovpn_status_servers_json" do |body|
       data = JSON.parse(body)
       rows = data["data"]
