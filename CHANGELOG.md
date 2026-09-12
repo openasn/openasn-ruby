@@ -63,7 +63,8 @@ without growing the verdict enum.
   Microsoft WSUS — which are not IBM address space.
 
 - **SWG/SASE egress beyond Zscaler**, in a new opt-in `swg_egress` switch:
-  `cisco_sse_geofeed` (86 v4 + 65 v6) and `cato_pop_ranges` (40 v4). One
+  `cisco_sse_geofeed` (86 v4 + 65 v6), `broadcom_cloud_swg` (232 v4 + 36 v6)
+  and `cato_pop_ranges` (40 v4). One
   Cisco feed covers both Umbrella and Cisco Secure Access. `zscaler` keeps
   its own switch — config keys are append-only.
 
@@ -77,6 +78,7 @@ without growing the verdict enum.
   `atlassian_ipranges_json`, `json_string_array`,
   `scaleway_network_mdx`, `ibm_cloud_ip_ranges_markdown`,
   `ovh_web_hosting_cluster_md`, `cato_pop_html`, `ovpn_client_entry_json`,
+  `broadcom_servicepoints_json`,
   and `geofeed_csv_no_widen` —
   RFC 8805 again, but refusing to WIDEN a row. Cisco publishes 142 single
   egress addresses with a bogus /32 mask; handing those to IPAddr silently

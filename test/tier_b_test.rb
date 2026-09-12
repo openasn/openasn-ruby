@@ -413,6 +413,50 @@ class ParsersTest < Minitest::Test
     end
   end
 
+  # Broadcom mixes four container shapes in one document, publishes bare
+  # addresses in one of them, and puts its own portal hosts in a section that
+  # must never be read as customer egress.
+  def test_broadcom_servicepoints_json_reads_every_range_shape_and_skips_management
+    # 160 synthetic sites clear the >= 300 sanity floor the parser enforces
+    sites = 160.times.map do |i|
+      { site: "site#{i}", region: "emea",
+        ingress_egress_ranges: [{ go_live_date: "2022-01-01 00:00:00",
+                                  range: "199.247.#{i % 200}.0/24", shutdown_date: nil }],
+        ingress_egress_ranges_ipv6: [{ range: "2604:b040:13:#{i}00::/80", shutdown_date: nil }],
+        ingress_ips: ["203.0.113.#{i}"] }
+    end
+    body = JSON.generate({ timestamp: 1_789_009_204.17,
+                           wss_datapath: sites,
+                           wss_egress_routing: [{ site: "gcamo", region: "na",
+                                                  dedicated_egress_ranges: [{ country_code: "CA",
+                                                                              ranges: ["34.152.56.0/25"] }],
+                                                  shared_egress_ranges: [{ country_code: "US",
+                                                                           ranges: ["8.38.150.1/32"] }] }],
+                           wss_kps: [{ site: "ginmu",
+                                       country_egress_ranges: [{ country_code: "IN",
+                                                                 ranges: ["168.149.168.0"] }] }],
+                           web_isolation: [{ ranges: [{ range: "34.95.42.192/27", shutdown_date: nil }],
+                                             ips: [] }],
+                           wss_management: [{ domain: "ctc.threatpulse.com", service: "ctc",
+                                              ips: [{ ip: "130.211.30.2", shutdown_date: nil }],
+                                              ranges: [] }] })
+    tokens = P.parse("broadcom_servicepoints_json", body)
+    assert_includes tokens, "199.247.7.0/24"
+    assert_includes tokens, "2604:b040:13:700::/80"
+    assert_includes tokens, "34.152.56.0/25"          # flat-array-of-strings shape
+    assert_includes tokens, "8.38.150.1/32"
+    assert_includes tokens, "168.149.168.0/32"        # bare address gets a host route
+    assert_includes tokens, "34.95.42.192/27"
+    refute_includes tokens, "130.211.30.2/32"         # wss_management is not customer egress
+    refute_includes tokens, "203.0.113.7/32"          # ingress_ips are tunnel listeners
+  end
+
+  def test_broadcom_servicepoints_json_drops_retired_ranges_and_refuses_a_thin_document
+    thin = JSON.generate({ wss_datapath: [{ ranges: [{ range: "1.2.3.0/24", shutdown_date: "2020-01-01 00:00:00" }] }] })
+    assert_raises(P::ParseError) { P.parse("broadcom_servicepoints_json", thin) }
+    assert_raises(P::ParseError) { P.parse("broadcom_servicepoints_json", "[]") }
+  end
+
   # --- documentation-as-data clouds ------------------------------------------
 
   # Scaleway's page has TWO bullet lists of addresses. Only the first is

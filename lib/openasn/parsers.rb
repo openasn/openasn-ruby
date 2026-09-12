@@ -2,6 +2,7 @@
 
 require "ipaddr"
 require "json"
+require "time"
 require "zlib"
 
 module OpenASN
@@ -451,6 +452,80 @@ module OpenASN
       tokens.uniq!
       if tokens.length < 100
         raise ParseError, "ovh_web_hosting_cluster_md: #{tokens.length} addresses, expected >= 100 — page changed?"
+      end
+
+      tokens
+    end
+
+    # Broadcom / Symantec Cloud SWG (ex-Web Security Service) service points.
+    # Broadcom's own docs name this URL in prose for firewall configuration,
+    # which makes it the same shape of publication as Zscaler's CENR feed.
+    #
+    # The document mixes FOUR different container shapes, which is the whole
+    # difficulty:
+    #   wss_datapath[].ingress_egress_ranges[]      -> [{range, go_live_date, shutdown_date}]
+    #   wss_datapath[].ingress_egress_ranges_ipv6[] -> same, and ABSENT on most entries
+    #   wss_egress_routing[].{dedicated,shared}_egress_ranges[].ranges[] -> flat strings
+    #   wss_kps[].country_egress_ranges[].ranges[]  -> flat strings with NO prefix
+    #   web_isolation[].ranges[]                    -> [{range, …}] again
+    #
+    # SKIPPED on purpose: `wss_management` (portal/API service hosts such as
+    # ctc.threatpulse.com — infrastructure Broadcom runs, not customer
+    # browsing egress) and `wss_datapath[].ingress_ips` (tunnel listener
+    # addresses already inside the same site's ranges).
+    #
+    # A range with a PAST shutdown_date is dropped; a future one is kept,
+    # because Broadcom announces retirements weeks ahead and that space is
+    # still carrying traffic today.
+    # Every "*_ranges" (and plain "ranges") key in an allowed section is
+    # range data whatever Broadcom calls it, so new region keys are picked up
+    # without a gem release. "ips"/"ingress_ips" are deliberately not.
+    BROADCOM_RANGE_KEY = /(\A|_)ranges(_ipv6)?\z/.freeze
+
+    register "broadcom_servicepoints_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "broadcom_servicepoints_json: expected object" unless data.is_a?(Hash)
+
+      now = Time.now.utc
+      retired = lambda do |entry|
+        stamp = entry["shutdown_date"]
+        return false unless stamp.is_a?(String)
+
+        begin
+          Time.parse("#{stamp} UTC") < now
+        rescue StandardError
+          false
+        end
+      end
+
+      tokens = []
+      %w[wss_datapath wss_egress_routing wss_kps web_isolation].each do |section|
+        Array(data[section]).each do |site|
+          next unless site.is_a?(Hash)
+
+          site.each do |key, value|
+            next unless key.match?(BROADCOM_RANGE_KEY)
+
+            Array(value).each do |entry|
+              case entry
+              when Hash
+                # Either {range, shutdown_date} or a country group {ranges: [...]}.
+                next if retired.call(entry)
+
+                tokens << entry["range"] if entry["range"].is_a?(String)
+                Array(entry["ranges"]).each { |r| tokens << r if r.is_a?(String) }
+              when String
+                tokens << entry
+              end
+            end
+          end
+        end
+      end
+
+      # wss_kps publishes bare addresses ("168.149.168.0"); make them host routes.
+      tokens = tokens.map { |t| t.include?("/") ? t : "#{t}/#{t.include?(':') ? 128 : 32}" }.uniq
+      if tokens.length < 300
+        raise ParseError, "broadcom_servicepoints_json: #{tokens.length} ranges, expected >= 300 — schema changed?"
       end
 
       tokens

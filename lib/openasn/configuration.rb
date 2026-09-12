@@ -121,7 +121,7 @@ module OpenASN
       verified_crawlers_extra: %w[bingbot google_infra google_user_triggered_fetchers_gae
                                   amazonbot amzn_searchbot amzn_user ahrefsbot],
       zscaler: %w[zscaler zscaler_gov],
-      swg_egress: %w[cisco_sse_geofeed cato_pop_ranges],
+      swg_egress: %w[cisco_sse_geofeed cato_pop_ranges broadcom_cloud_swg],
       vpn_providers: %w[protonvpn mullvad_relays ivpn_servers pia_servers airvpn_status windscribe_servers
                         privadovpn riseup_vpn wlvpn_server_list worldvpn_servers ovpn_servers
                         anonine_status],
