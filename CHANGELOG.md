@@ -94,6 +94,31 @@ without growing the verdict enum.
   them before. A source could ship and never be fetched because no feature
   switch named its id — invisible at runtime, since the executor just skips.
 
+- **A bogon filter on every Tier B overlay.** A Tier B source is a remote
+  party this project does not control, and a mistake in one of their files
+  becomes a verdict in ours. Live audit 2026-09-12: Vultr's RFC 8805 geofeed
+  (`https://geofeed.constant.com/`, recipe `vultr`, in the default-ON
+  `clouds` group) publishes `192.0.2.0/24`, `198.51.100.0/24`,
+  `203.0.113.0/24`, `2001:2::/48`, `2001:10::/28`, `2001:db8::/32` and
+  `2002::/16` as its own space. Every client with Tier B enabled was
+  therefore reporting the RFC 5737 test networks, the RFC 3849 documentation
+  prefix and **all of 6to4** as `hosting`/vultr — and a 6to4 address embeds a
+  real end user's IPv4 address, so residential visitors were being called a
+  datacenter. Twenty-one other sources were clean.
+
+  `TierB#refresh_source` now clips every source's parsed ranges against the
+  non-globally-reachable entries of the IANA IPv4/IPv6 Special-Purpose
+  Address Registries (`TierB::BOGON_CIDRS`) before they reach the store.
+  **Clip, not drop:** `192.0.0.0/22` keeps `192.0.1.0/24` and `192.0.3.0/24`.
+  A source that is entirely special-purpose yields zero ranges and takes the
+  existing keep-stale branch. Globally-reachable registry entries are
+  deliberately kept (NAT64 `64:ff9b::/96`, AS112, AMT) — eating those would
+  be the too-aggressive failure mode. Each clipped range is logged once at
+  WARN with the source id, capped at `MAX_BOGON_WARNINGS` (20) plus a count
+  of the rest. Tier A canonical data is untouched: this project builds it, it
+  is not a third party's claim about itself. The Python client shipped the
+  same filter and the same prefix table; they are a cross-language contract.
+
 ### Changed
 
 - `Result#to_h` gains `crawler`, `verified_crawler`, `crawler_role` and

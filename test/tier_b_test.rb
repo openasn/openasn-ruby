@@ -674,10 +674,67 @@ class ParsersTest < Minitest::Test
 end
 
 class CidrUtilsTest < Minitest::Test
+  U = OpenASN::CidrUtils
+
   def test_ranges_by_family_merges_and_splits
-    out = OpenASN::CidrUtils.ranges_by_family(["1.0.0.0/25", "1.0.0.128/25", "junk", "2001:db8::/64"])
+    out = U.ranges_by_family(["1.0.0.0/25", "1.0.0.128/25", "junk", "2001:db8::/64"])
     assert_equal [[IPAddr.new("1.0.0.0").to_i, IPAddr.new("1.0.0.255").to_i]], out[:ipv4]
     assert_equal 1, out[:ipv6].length
+  end
+
+  # subtract() is the range math under the Tier B bogon filter. Pure
+  # arithmetic, so it is tested on small integers where every boundary is
+  # readable — off-by-ones here become mis-clipped provider space.
+  def test_subtract_no_overlap_returns_the_range_unchanged
+    assert_equal [[10, 20]], U.subtract(10, 20, [[30, 40]])
+    assert_equal [[10, 20]], U.subtract(10, 20, [[1, 5]])
+    assert_equal [[10, 20]], U.subtract(10, 20, [])
+  end
+
+  def test_subtract_touching_but_not_overlapping_is_not_an_overlap
+    assert_equal [[10, 20]], U.subtract(10, 20, [[1, 9]])
+    assert_equal [[10, 20]], U.subtract(10, 20, [[21, 30]])
+  end
+
+  def test_subtract_punches_a_hole_and_keeps_both_sides
+    assert_equal [[10, 13], [16, 20]], U.subtract(10, 20, [[14, 15]])
+  end
+
+  def test_subtract_trims_each_edge
+    assert_equal [[16, 20]], U.subtract(10, 20, [[1, 15]])
+    assert_equal [[10, 14]], U.subtract(10, 20, [[15, 30]])
+  end
+
+  def test_subtract_fully_covered_yields_nothing
+    assert_empty U.subtract(10, 20, [[10, 20]])
+    assert_empty U.subtract(10, 20, [[1, 100]])
+  end
+
+  def test_subtract_applies_every_blocked_range_in_turn
+    assert_equal [[11, 11], [15, 15], [19, 20]], U.subtract(10, 20, [[1, 10], [12, 14], [16, 18]])
+  end
+
+  def test_subtract_handles_a_single_address_range
+    assert_empty U.subtract(42, 42, [[40, 50]])
+    assert_equal [[42, 42]], U.subtract(42, 42, [[43, 50]])
+  end
+
+  # The bogon table itself must be sorted and merged, because subtract's
+  # early `break` assumes it. A future editor appending an out-of-order
+  # prefix would silently stop clipping everything after it.
+  def test_the_bogon_table_is_sorted_and_merged
+    OpenASN::TierB::BOGON_RANGES.each do |family, ranges|
+      ranges.each_cons(2) do |(_, a_end), (b_start, _)|
+        assert_operator b_start, :>, a_end + 1,
+                        "#{family} bogon table is not sorted+merged: #{a_end} then #{b_start}"
+      end
+    end
+  end
+
+  def test_every_bogon_prefix_parses
+    OpenASN::TierB::BOGON_CIDRS.each do |cidr|
+      refute_nil U.parse(cidr), "unparseable bogon prefix #{cidr.inspect}"
+    end
   end
 end
 
@@ -1029,5 +1086,216 @@ class BundledManifestConsistencyTest < Minitest::Test
 
       assert_includes consulted, m, "#{s['id']}: maps_to #{m.inspect} is never consulted"
     end
+  end
+end
+
+# A Tier B source is a REMOTE PARTY this project does not control. Live audit
+# 2026-09-12: Vultr's RFC 8805 geofeed publishes seven IANA special-purpose
+# prefixes as its own space, including all of 6to4 — whose addresses embed a
+# real end user's IPv4 address. With `clouds` on by default, every client was
+# calling those people a Vultr datacenter. These tests pin the fix: CLIP the
+# bogons out of every Tier B overlay, keep the legitimate remainder, and say
+# out loud which source published them.
+class TierBBogonFilterTest < Minitest::Test
+  VULTR = "https://geofeed.constant.com/"
+
+  def setup
+    super
+    FixtureData.install_canonical(@test_data_dir)
+    @log = StringIO.new
+    configure do |c|
+      c.logger = Logger.new(@log, level: Logger::WARN)
+      c.tier_b = { apple_relay: false, tor: false, clouds: true, verified_crawlers: false,
+                   vpn_providers: false, zscaler: false, nazgul_mixed: false }
+    end
+    write_manifest("geofeed_csv")
+  end
+
+  # One source, so a failure names one thing. `vultr` because it is the real
+  # offender and its recipe is in the default-ON `clouds` group.
+  def write_manifest(parser)
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "vultr", url: VULTR, parser: parser, maps_to: "hosting",
+                  provider: "vultr", cadence_hours: 24 }]
+    }))
+  end
+
+  def execute(force: true)
+    http = OpenASN::HttpClient.new(user_agent: OpenASN.configuration.user_agent,
+                                   logger: OpenASN.configuration.logger)
+    OpenASN::TierB.new(OpenASN.configuration, http).execute(force: force)
+  end
+
+  # Read the overlay back off DISK and unpack it, rather than trusting an
+  # in-memory value: the bytes that ship to the classifier are the thing
+  # under test, and a filter that ran but wrote the unfiltered array would
+  # pass any assertion made before the write.
+  def overlay_ranges(family = :ipv4)
+    path = File.join(@test_data_dir, "overlays", "vultr-#{family}.bin")
+    return [] unless File.exist?(path)
+
+    bytes = File.binread(path)
+    asz = family == :ipv4 ? 4 : 16
+    unpack = family == :ipv4 ? ->(s) { s.unpack1("N") } : ->(s) { hi, lo = s.unpack("Q>Q>"); (hi << 64) | lo }
+    (bytes.bytesize / (asz * 2)).times.map do |i|
+      off = i * asz * 2
+      [unpack.call(bytes[off, asz]), unpack.call(bytes[off + asz, asz])]
+    end
+  end
+
+  # The abbreviated real thing: the seven prefixes verified live at
+  # https://geofeed.constant.com/ on 2026-09-12, plus two genuine Vultr
+  # ranges so the source is not entirely bogus.
+  def test_the_real_vultr_geofeed_rows_are_clipped_and_the_genuine_ones_survive
+    stub_request(:get, VULTR).to_return(status: 200, body: <<~CSV)
+      # Vultr geofeed (abbreviated for test)
+      104.238.128.0/24,US,US-NJ,Piscataway,
+      192.0.2.0/24,US,,,
+      198.51.100.0/24,US,,,
+      203.0.113.0/24,US,,,
+      2001:19f0:5::/48,US,US-NJ,Piscataway,
+      2001:2::/48,US,,,
+      2001:10::/28,US,,,
+      2001:db8::/32,US,,,
+      2002::/16,US,,,
+    CSV
+
+    assert execute
+    r = OpenASN.lookup("104.238.128.10")
+    assert_equal :hosting, r.verdict
+    assert_equal "vultr", r.provider
+
+    # Every one of the seven is gone…
+    %w[192.0.2.10 198.51.100.10 203.0.113.10].each do |ip|
+      refute_equal "vultr", OpenASN.lookup(ip).provider, "#{ip} still attributed to vultr"
+    end
+    %w[2001:2::10 2001:10::10 2001:db8::10].each do |ip|
+      refute_equal "vultr", OpenASN.lookup(ip).provider, "#{ip} still attributed to vultr"
+    end
+    # …and the legitimate v6 range is untouched.
+    assert_equal "vultr", OpenASN.lookup("2001:19f0:5::10").provider
+
+    assert_equal 1, overlay_ranges(:ipv4).length
+    assert_equal 1, overlay_ranges(:ipv6).length
+  end
+
+  # The one that matters most. A 6to4 address embeds the user's real IPv4
+  # address in bits 16..47 — 2002:5db8:d822:: is 93.184.216.34 over 6to4.
+  # Before the filter, that residential visitor was reported as a Vultr
+  # datacenter, which is a false positive against a real person: the exact
+  # failure mode the project's "prefer false negatives" rule exists to stop.
+  def test_a_6to4_end_user_is_not_reported_as_a_datacenter
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n2002::/16,US,,,\n")
+    assert execute
+
+    r = OpenASN.lookup("2002:5db8:d822::1")
+    refute_equal "vultr", r.provider
+    refute_includes r.sources.map(&:to_s), "vultr"
+  end
+
+  # CLIP, not drop: a range that merely overlaps keeps its remainder. A
+  # filter that deleted the whole /22 because it touched a bogon would be
+  # worse than the bug it fixes.
+  def test_a_straddling_range_keeps_its_legitimate_halves
+    # 192.0.0.0/22 = 192.0.0.0-192.0.3.255. 192.0.0.0/24 (IETF protocol
+    # assignments) and 192.0.2.0/24 (TEST-NET-1) are bogons; the other two
+    # /24s are ordinary space.
+    stub_request(:get, VULTR).to_return(status: 200, body: "192.0.0.0/22,US,,,\n")
+    assert execute
+
+    ranges = overlay_ranges(:ipv4)
+    assert_equal 2, ranges.length
+    assert_equal [IPAddr.new("192.0.1.0").to_i, IPAddr.new("192.0.1.255").to_i], ranges[0]
+    assert_equal [IPAddr.new("192.0.3.0").to_i, IPAddr.new("192.0.3.255").to_i], ranges[1]
+  end
+
+  # A source that is ENTIRELY special-purpose parses to 0 ranges and takes
+  # the pre-existing keep-stale branch. That is the correct outcome, not a
+  # special case: "the file says nothing usable" is upstream breakage.
+  def test_an_all_bogon_source_is_keep_stale_not_an_empty_overlay
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n")
+    assert execute
+    assert_equal "vultr", OpenASN.lookup("104.238.128.10").provider
+
+    stub_request(:get, VULTR).to_return(status: 200, body: "192.0.2.0/24,US,,,\n203.0.113.0/24,US,,,\n")
+    refute execute
+
+    state = OpenASN::OverlayStore.new(@test_data_dir).source_state("vultr")
+    assert_match(/0 ranges/, state["last_error"])
+    # Yesterday's good overlay is still live.
+    assert_equal "vultr", OpenASN.lookup("104.238.128.10").provider
+  end
+
+  # The too-aggressive failure mode. IANA marks these Globally Reachable, so
+  # an operator may legitimately announce them and eating them would be our
+  # bug, not theirs.
+  def test_globally_reachable_special_registry_blocks_are_kept
+    body = ["192.31.196.0/24,US,,,",   # AS112-v4
+            "192.52.193.0/24,US,,,",   # AMT (RFC 7450)
+            "192.175.48.0/24,US,,,",   # AS112 direct delegation
+            "64:ff9b::/96,US,,,",      # NAT64 well-known prefix
+            "2620:4f:8000::/48,US,,,"].join("\n") + "\n" # AS112 direct delegation v6
+    stub_request(:get, VULTR).to_return(status: 200, body: body)
+    assert execute
+
+    assert_equal 3, overlay_ranges(:ipv4).length
+    assert_equal 2, overlay_ranges(:ipv6).length
+    assert_empty @log.string, "nothing was clipped, so nothing should have been logged"
+  end
+
+  # Its local-use sibling IS filtered — same registry, different
+  # reachability, and the distinction is the whole rule.
+  def test_the_local_use_translation_prefix_is_filtered
+    stub_request(:get, VULTR).to_return(status: 200, body: "64:ff9b:1::/48,US,,,\n2001:19f0:5::/48,US,,,\n")
+    assert execute
+    assert_equal 1, overlay_ranges(:ipv6).length
+    assert_match(/64:ff9b:1::/, @log.string)
+  end
+
+  def test_ordinary_space_logs_nothing
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n2001:19f0:5::/48,US,,,\n")
+    assert execute
+    assert_empty @log.string
+  end
+
+  # A provider publishing test networks as its own space is a fact about
+  # that provider its users deserve to see — named, with the source id.
+  def test_each_clipped_range_is_reported_once_with_the_source_id
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n203.0.113.0/24,US,,,\n")
+    assert execute
+
+    lines = @log.string.lines.grep(/special-purpose/)
+    assert_equal 1, lines.length
+    assert_match(/tier B vultr publishes IANA special-purpose space 203\.0\.113\.0-203\.0\.113\.255/, lines[0])
+    assert_match(/clipped out of the overlay/, lines[0])
+  end
+
+  # A broken or hostile source could publish tens of thousands of bogons.
+  # One WARN each would be its own denial of service on the log pipeline, so
+  # the list is capped and the remainder is counted.
+  def test_the_warning_list_is_capped_and_the_rest_are_counted
+    cap = OpenASN::TierB::MAX_BOGON_WARNINGS
+    # 25 non-adjacent /32s inside multicast space, so they cannot merge into
+    # one range (the +1 adjacency rule in CidrUtils.merge would hide them).
+    rows = (0...(cap + 5)).map { |i| "224.0.#{i * 2}.1/32,US,,," }
+    rows << "104.238.128.0/24,US,,," # one genuine range so the source is not all-bogon
+    stub_request(:get, VULTR).to_return(status: 200, body: rows.join("\n") + "\n")
+    assert execute
+
+    listed = @log.string.lines.grep(/publishes IANA special-purpose space/)
+    assert_equal cap, listed.length
+    assert_match(/5 further ipv4 special-purpose ranges clipped \(not listed\)/, @log.string)
+    assert_equal 1, overlay_ranges(:ipv4).length
+  end
+
+  # Tier A is built by this project from sources it vetted; it is not a
+  # third party's claim about itself, and the filter must not touch it.
+  def test_tier_a_canonical_data_is_untouched
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n")
+    assert execute
+    # 10.1.2.3 is RFC 1918 and IS a bogon, but the canonical special-range
+    # ladder still answers for it — the filter is Tier B only.
+    assert_equal :private, OpenASN.lookup("10.1.2.3").verdict
   end
 end
