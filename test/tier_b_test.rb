@@ -996,7 +996,19 @@ end
 class BundledManifestConsistencyTest < Minitest::Test
   MANIFEST = JSON.parse(File.read(File.join(OpenASN::Snapshot::SEED_DIR, "fetch-manifest.json"))).freeze
 
-  def manifest_ids = MANIFEST["sources"].map { |s| s["id"] }
+  # Recipes this gem deliberately never executes, each with the reason. A
+  # source listed here is exempt from the reachability, parser and maps_to
+  # checks below; anything else in the manifest must pass them.
+  NOT_EXECUTED = {
+    # The gem exposes no country at all (data repo DECISIONS.md D-SRC-2
+    # (country)); a registry country would widen the use of RIR data with a
+    # meaning that differs from the CSV's. The Python client lists it too.
+    "ipverse_as_country" => "no Result#country in this gem"
+  }.freeze
+
+  def executed_sources = MANIFEST["sources"].reject { |s| NOT_EXECUTED.key?(s["id"]) }
+
+  def manifest_ids = executed_sources.map { |s| s["id"] }
 
   def mapped_ids = OpenASN::Configuration::TIER_B_SOURCE_MAP.values.flatten
 
@@ -1005,13 +1017,19 @@ class BundledManifestConsistencyTest < Minitest::Test
     assert_empty orphans, "fetch-manifest sources no feature switch can enable: #{orphans.inspect}"
   end
 
+  def test_not_executed_sources_exist_and_are_mapped_by_no_switch
+    all_ids = MANIFEST["sources"].map { |s| s["id"] }
+    assert_empty NOT_EXECUTED.keys - all_ids, "NOT_EXECUTED names sources the manifest no longer has"
+    assert_empty NOT_EXECUTED.keys & mapped_ids, "a NOT_EXECUTED source is mapped by a feature switch"
+  end
+
   def test_every_mapped_source_id_exists_in_the_manifest
     dangling = mapped_ids - manifest_ids
     assert_empty dangling, "TIER_B_SOURCE_MAP names sources the manifest does not define: #{dangling.inspect}"
   end
 
   def test_every_manifest_parser_is_implemented_by_this_gem
-    missing = MANIFEST["sources"].map { |s| s["parser"] }.uniq.reject { |p| OpenASN::Parsers.known?(p) }
+    missing = executed_sources.map { |s| s["parser"] }.uniq.reject { |p| OpenASN::Parsers.known?(p) }
     assert_empty missing, "fetch-manifest references parsers this gem lacks: #{missing.inspect}"
   end
 
@@ -1081,7 +1099,7 @@ class BundledManifestConsistencyTest < Minitest::Test
   # D-SRC-2). A typo here is a source that fetches and then does nothing.
   def test_maps_to_values_are_ones_the_classifier_acts_on
     consulted = %w[relay tor_exit vpn enterprise_gateway hosting as_org]
-    MANIFEST["sources"].each do |s|
+    executed_sources.each do |s|
       m = s["maps_to"]
       next if m.start_with?("flag:")
 

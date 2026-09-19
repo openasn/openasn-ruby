@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_comment": "Tier B source specification, executed CLIENT-SIDE by OpenASN clients (the Ruby gem's update job). These sources have terms that permit fetching from the original authority but NOT third-party redistribution, or they change too fast for a nightly artifact (Tor exits) - so OpenASN publishes the recipe, never the data (the fetch-is-not-redistribute rule; see README Legal design). Clients: send a descriptive User-Agent, honor cadence_hours, keep stale data on failure, and skip source ids or parser ids you don't recognize (forward compatibility). A recipe with maps_to \"as_org\" is an ASN -> organization-name table, not an IP list: it fills Result#as_org where the canonical openasn-orgs.bin has no name, and never overrides a canonical name.",
+  "_comment": "Tier B source specification, executed CLIENT-SIDE by OpenASN clients (the Ruby gem's update job). These sources have terms that permit fetching from the original authority but NOT third-party redistribution, or they change too fast for a nightly artifact (Tor exits) - so OpenASN publishes the recipe, never the data (the fetch-is-not-redistribute rule; see README Legal design). Clients: send a descriptive User-Agent, honor cadence_hours, keep stale data on failure, and skip source ids or parser ids you don't recognize (forward compatibility). A recipe with maps_to \"as_org\" is an ASN -> organization-name table, not an IP list: it fills Result#as_org where the canonical openasn-orgs.bin has no name, and never overrides a canonical name. A recipe with maps_to \"as_country\" is likewise an ASN -> country table: it fills an ASN's country where the canonical asn-categories.csv has none, and never overrides a canonical country.",
   "sources": [
     {
       "id": "apple_private_relay",
@@ -965,6 +965,18 @@
       "enabled_default": true,
       "min_records": 50000,
       "notes": "NOT AN IP LIST: an ASN -> organization-name table (as.csv header: asn,handle,description,country-code; ~6MB, ~125k rows). Clients use the `description` column to fill as_org for ASNs that the canonical openasn-orgs.bin does not name. The canonical CC0 names (our sourced org_names.txt, then Wikidata) always win. The descriptions are bulk RIR WHOIS `descr` strings. APNIC, ARIN and RIPE restrict republishing WHOIS in bulk, so OpenASN stopped publishing them in 2026-09 (DECISIONS.md D-SRC-2, org names). Your server fetches them for its own use, and you are responsible for that use under the RIRs' terms. Do not redistribute the table. On by default like other light recipes (coordinator ruling CD-11a, 2026-09-19); disable it if you do not want WHOIS-derived names on your server. min_records: a parse that yields fewer names than this is upstream breakage, so keep stale. Clients that do not know this parser id skip the source (forward compatibility)."
+    },
+    {
+      "id": "ipverse_as_country",
+      "url": "https://raw.githubusercontent.com/ipverse/as-metadata/master/as.csv",
+      "parser": "ipverse_as_csv_country",
+      "maps_to": "as_country",
+      "provider": "ipverse as-metadata",
+      "cadence_hours": 168,
+      "on_failure": "keep_stale",
+      "enabled_default": true,
+      "min_records": 50000,
+      "notes": "NOT AN IP LIST: an ASN -> registry-country table, the same as.csv file as ipverse_org_names (header: asn,handle,description,country-code; ~6MB, ~125k rows). Clients read the `country-code` column (ISO 3166-1 alpha-2; `XX` means unknown and is skipped) to fill an ASN's country where OpenASN's canonical CC0 country (our sourced asn_country.txt, then Wikidata) is empty. The canonical value always wins. The codes come from RIR registry records: ipverse says its country code is 'sourced from regional internet registries (RIR)'. The RIRs do not grant bulk republication, so OpenASN stopped publishing them in 2026-09 (DECISIONS.md D-SRC-2, country). Your server fetches them for its own use, and you are responsible for that use under the RIRs' terms. Do not redistribute the table. Semantics differ slightly: a registry country is the address on the registrant's record, while the canonical value is where the operator is based. On by default like the other light recipes (coordinator ruling CD-11a/CD-11d, 2026-09-19); disable it if you do not want registry-derived countries on your server. Clients that fetch ipverse_org_names may reuse the same download. min_records: a parse that yields fewer countries than this is upstream breakage, so keep stale. Clients that do not know this parser id skip the source (forward compatibility)."
     }
   ]
 }
