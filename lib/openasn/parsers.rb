@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require "ipaddr"
 require "json"
+require "time"
 require "zlib"
 
 module OpenASN
@@ -71,6 +73,44 @@ module OpenASN
       end
     end
 
+    # RFC 8805 geofeed again, but refusing to WIDEN a row.
+    #
+    # Cisco's SSE feed publishes 142 single reserved egress addresses with a
+    # bogus /32 mask: `2603:5004:e0:107::135b/32`. Handing that to IPAddr
+    # silently masks it to `2603:5004::/32` — a 2^96 block — and would stamp
+    # enterprise_gateway across all of it on the evidence of one host route.
+    # (ARIN says 2603:5000::/24 is "Cisco Systems Cloud Division", so the
+    # widened claim would not be *false*; it would just be an enormous claim
+    # built from a pinhole. Prefer false negatives.)
+    #
+    # So: a row whose address has bits set below its stated prefix length is
+    # emitted as a host route instead. Rows that are already exact networks
+    # pass through untouched, which is every IPv4 row and 267 of 409 IPv6
+    # rows in that feed as of 2026-09-12.
+    register "geofeed_csv_no_widen" do |body|
+      tokens = body.each_line.filter_map do |line|
+        t = line.strip
+        next if t.empty? || t.start_with?("#")
+
+        token = t.split(",", 2).first.to_s.strip
+        next if token.empty?
+
+        address, length = token.split("/", 2)
+        next token unless length
+
+        begin
+          exact = IPAddr.new(address)
+          masked = IPAddr.new(token)
+          exact == masked ? token : "#{address}/#{exact.ipv6? ? 128 : 32}"
+        rescue StandardError
+          token # junk falls through and CidrUtils drops it
+        end
+      end
+      raise ParseError, "geofeed_csv_no_widen: no rows — feed empty or moved?" if tokens.empty?
+
+      tokens
+    end
+
     # --- structured cloud publications ---------------------------------------
 
     register "aws_json" do |body|
@@ -104,6 +144,391 @@ module OpenASN
       raise ParseError, "oci_json: no cidrs — schema changed?" if cidrs.empty?
 
       cidrs
+    end
+
+    # --- verified crawler / agent recognition lists ---------------------------
+
+    # The de-facto standard shape for "these IPs are really our crawler",
+    # first published by Google and since copied verbatim by Bing, OpenAI,
+    # Perplexity, Common Crawl and others:
+    #
+    #   {"creationTime": "...", "prefixes": [{"ipv4Prefix": "..."},
+    #                                        {"ipv6Prefix": "..."}]}
+    #
+    # One parser covers every publisher that follows it, so a new crawler
+    # feed is a fetch-manifest entry with no gem release. Publishers that
+    # deviate (Amazon's plain-text lists, Bing's variants) get their own id.
+    register "crawler_ipranges_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "crawler_ipranges_json: expected object" unless data.is_a?(Hash)
+
+      prefixes = (data["prefixes"] || []).filter_map do |p|
+        next unless p.is_a?(Hash)
+
+        p["ipv4Prefix"] || p["ipv6Prefix"] || p["ipv4prefix"] || p["ipv6prefix"]
+      end
+      raise ParseError, "crawler_ipranges_json: no prefixes — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
+    # Amazon publishes its bot lists as a JSON document embedded in a
+    # documentation PAGE (~490 KB of HTML wrapping ~25 KB of JSON) inside
+    # `<pre><code class="container">…</code></pre>`, and the three files
+    # disagree with each other: amazonbot / live-ip-addresses use
+    # `ipv4Prefix` with BARE addresses ("52.4.5.6", no /32), while
+    # searchbot-ip-addresses uses AWS's `ip_prefix` key with the /32 already
+    # present. Normalise both, and append /32 only when the value has no
+    # prefix length — appending blindly would corrupt a real CIDR the day
+    # Amazon starts publishing one.
+    register "amazon_bot_html_json" do |body|
+      block = body[%r{<pre>\s*<code[^>]*class=["'][^"']*\bcontainer\b[^"']*["'][^>]*>(.*?)</code>\s*</pre>}m, 1]
+      raise ParseError, "amazon_bot_html_json: no <pre><code class=container> block — page changed?" unless block
+
+      json = block.gsub("&quot;", '"').gsub("&amp;", "&").gsub("&lt;", "<").gsub("&gt;", ">")
+      prefixes = (JSON.parse(json)["prefixes"] || []).filter_map do |p|
+        next unless p.is_a?(Hash)
+
+        value = p["ipv4Prefix"] || p["ip_prefix"] || p["ipv6Prefix"] || p["ipv6_prefix"]
+        next unless value.is_a?(String)
+
+        value.include?("/") ? value : "#{value}/#{value.include?(':') ? 128 : 32}"
+      end
+      raise ParseError, "amazon_bot_html_json: no prefixes — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
+    # --- additional first-party cloud / platform publications ----------------
+
+    # Fastly: {"addresses": ["23.235.32.0/20", …],
+    #          "ipv6_addresses": ["2a04:4e40::/32", …]}
+    register "fastly_public_ip_list_json" do |body|
+      data = JSON.parse(body)
+      prefixes = Array(data["addresses"]) + Array(data["ipv6_addresses"])
+      raise ParseError, "fastly_public_ip_list_json: no addresses — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
+    # GitHub https://api.github.com/meta — a flat object whose values are
+    # arrays of CIDRs grouped by service ("actions", "hooks", "api", "git",
+    # "packages", "copilot", …) mixed with non-CIDR keys ("ssh_keys",
+    # "verifiable_password_authentication", "domains"). Every CIDR in the
+    # document is GitHub-operated datacenter space, so we take the union of
+    # every top-level array entry that looks like a CIDR and stay immune to
+    # GitHub adding service groups (which it does regularly).
+    register "github_meta_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "github_meta_json: expected object" unless data.is_a?(Hash)
+
+      prefixes = data.each_value.flat_map do |value|
+        next [] unless value.is_a?(Array)
+
+        value.select { |v| v.is_a?(String) && v.include?("/") && v.match?(%r{\A[0-9a-fA-F:.]+/\d{1,3}\z}) }
+      end.uniq
+      raise ParseError, "github_meta_json: no CIDRs — schema changed?" if prefixes.empty?
+
+      prefixes
+    end
+
+    # Atlassian https://ip-ranges.atlassian.com/ —
+    # {"items": [{"cidr": "…", "product": ["jira"], "direction": ["egress"]}]}
+    register "atlassian_ipranges_json" do |body|
+      data = JSON.parse(body)
+      items = data["items"]
+      raise ParseError, "atlassian_ipranges_json: no items — schema changed?" unless items.is_a?(Array)
+
+      cidrs = items.filter_map { |i| i["cidr"] if i.is_a?(Hash) }
+      raise ParseError, "atlassian_ipranges_json: no cidrs — schema changed?" if cidrs.empty?
+
+      cidrs
+    end
+
+    # A bare top-level JSON array of CIDR/IP strings — the shape several
+    # smaller operators publish ("[\"1.2.3.0/24\", \"2.3.4.0/24\"]").
+    register "json_string_array" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "json_string_array: expected array" unless data.is_a?(Array)
+
+      tokens = data.select { |v| v.is_a?(String) }.map(&:strip).reject(&:empty?)
+      raise ParseError, "json_string_array: empty — schema changed?" if tokens.empty?
+
+      tokens
+    end
+
+    # Cato Networks publishes its SASE PoP ranges in a knowledge-base
+    # article — "We recommend that you add the IP ranges owned by Cato
+    # Networks to the relevant ACL" — which is our exact use case. The page
+    # is 1.6 MB of Document360 Angular SSR and the article body arrives
+    # HTML-escaped inside an attribute, but digits, dots and slashes are not
+    # escaped, so a CIDR scan over the raw response is both the simplest and
+    # the most drift-tolerant reader. Measured 2026-09-12: exactly 43 CIDRs,
+    # zero false positives from nav, footer, scripts or CSS.
+    #
+    # DO NOT try to parse the per-PoP "IP Range" tables instead. A single
+    # cell concatenates multiple dash-delimited ranges with no separator
+    # ("140.82.194.1 - 140.82.194.254113.30.130.1 - 113.30.130.254"), which
+    # yields corrupt octets like "06.39.250.192". Requiring a prefix length
+    # is what keeps those out, so the /NN is load-bearing, not incidental.
+    CATO_PREFIX_LENGTHS = (19..32).freeze
+
+    register "cato_pop_html" do |body|
+      cidrs = body.scan(%r{\b(?:\d{1,3}\.){3}\d{1,3}/\d{1,2}\b}).uniq.select do |cidr|
+        length = cidr.split("/").last.to_i
+        next false unless CATO_PREFIX_LENGTHS.cover?(length)
+
+        begin
+          IPAddr.new(cidr).ipv4?
+        rescue StandardError
+          false
+        end
+      end
+      unless (30..200).cover?(cidrs.length)
+        raise ParseError, "cato_pop_html: #{cidrs.length} CIDRs, expected 30..200 — page changed?"
+      end
+
+      cidrs
+    end
+
+    # --- documentation-as-data: clouds that publish ranges only in docs -------
+    #
+    # Three big hosters (Scaleway, IBM Cloud Classic, OVHcloud shared
+    # hosting) never built an ip-ranges endpoint; the authoritative list is
+    # a page in their documentation. All three now serve that page as raw
+    # markdown from their own domain — an LLM-era docs-platform feature that
+    # happens to be the cleanest machine path they have. Markdown is a
+    # weaker contract than JSON, so each of these parsers is strict about
+    # the ONE structure it reads and raises on anything else: a silent
+    # rewrite must become keep_stale, never a wrong answer.
+
+    # Scaleway https://www.scaleway.com/en/docs/account/reference-content/
+    # scaleway-network-information.md — MDX with a single authoritative
+    # section:
+    #
+    #   ## IP ranges used by Scaleway
+    #   ### IPv4
+    #   * `62.210.0.0/16`
+    #
+    # SCOPE IS THE WHOLE POINT. The very next H2 ("## DNS cache servers and
+    # NTP servers") lists BARE resolver addresses in the same bullet style,
+    # and a later section names the Dedibox monitoring subnet. Only the one
+    # section is Scaleway's statement of the space it routes, so we stop
+    # dead at the next H2.
+    register "scaleway_network_mdx" do |body|
+      in_section = false
+      cidrs = []
+      body.each_line do |line|
+        if line.start_with?("## ")
+          in_section = line.include?("IP ranges used by Scaleway")
+          next
+        end
+        next unless in_section
+
+        m = line.match(/\A\*\s+`([0-9a-fA-F:.]+\/\d{1,3})`\s*\z/)
+        cidrs << m[1] if m
+      end
+      if cidrs.length < 10
+        raise ParseError, "scaleway_network_mdx: found #{cidrs.length} CIDRs, expected >= 10 — page changed?"
+      end
+
+      cidrs
+    end
+
+    # IBM Cloud Classic https://cloud.ibm.com/docs/infrastructure-hub?topic=
+    # infrastructure-hub-ibm-cloud-ip-ranges&format=markdown
+    #
+    # 759 CIDRs, of which 509 are RFC1918. Ingesting this document whole
+    # would label every home and office LAN on earth as IBM hosting, so the
+    # parser is defensive twice over:
+    #
+    #   1. SECTION ALLOWLIST — only "Front-end (public) network", "Load
+    #      balancer IPs" and "Legacy networks" are public IBM space. The
+    #      back-end, service network and SSL VPN sections are RFC1918; the
+    #      "Red Hat Enterprise Linux server requirements" and "Windows
+    #      virtual server instance requirements" sections list endpoints a
+    #      CUSTOMER must reach (Red Hat, Microsoft WSUS) and must never be
+    #      attributed to IBM.
+    #   2. RFC1918 GUARD — applied anyway, so a renamed heading degrades to
+    #      "too few rows" rather than to a catastrophe.
+    #
+    # "Legacy networks" is in the allowlist on evidence, not on faith: its
+    # rows are ex-ThePlanet/SoftLayer space and ARIN still answers IBM for
+    # them (checked 2026-09-12 — 209.85.4.0 → NETBLK-THEPLANET-BLK-EV1-15,
+    # registrant "IBM Cloud"; 12.96.160.0 → SOFTLAYER TECHNOLOGIES, INC).
+    #
+    # Row shape is `|dal05|Dallas |50.23.203.0/24  \n 108.168.157.0/24|`
+    # where that `\n` is a LITERAL backslash-n inside one line, not a
+    # newline: several data centers pack multiple CIDRs into one cell. The
+    # legacy table has a single column and one row is a bare address.
+    IBM_PUBLIC_SECTIONS = ["Front-end (public) network", "Load balancer IPs", "Legacy networks"].freeze
+    RFC1918 = [IPAddr.new("10.0.0.0/8"), IPAddr.new("172.16.0.0/12"), IPAddr.new("192.168.0.0/16")].freeze
+
+    register "ibm_cloud_ip_ranges_markdown" do |body|
+      in_section = false
+      cidrs = []
+      body.each_line do |line|
+        if line.start_with?("## ")
+          heading = line.sub(/\A##\s*/, "").strip
+          in_section = IBM_PUBLIC_SECTIONS.include?(heading)
+          next
+        elsif line.start_with?("### ")
+          in_section = false # subsections of a public section are never public
+          next
+        end
+        next unless in_section && line.start_with?("|")
+
+        # 3-column tables put the ranges in column 3; the single-column
+        # legacy table puts them in column 1. Scan every cell and let the
+        # CIDR shape decide — header and separator rows never match.
+        line.split("|").each do |cell|
+          cell.split(/\s*\\n\s*/).each do |token|
+            t = token.strip
+            next unless t.match?(%r{\A\d{1,3}(\.\d{1,3}){3}(/\d{1,2})?\z})
+
+            t += "/32" unless t.include?("/")
+            addr = begin
+              IPAddr.new(t)
+            rescue StandardError
+              nil
+            end
+            next if addr.nil? || RFC1918.any? { |p| p.include?(addr) }
+
+            cidrs << t
+          end
+        end
+      end
+      cidrs.uniq!
+      if cidrs.length < 50
+        raise ParseError, "ibm_cloud_ip_ranges_markdown: #{cidrs.length} public CIDRs, expected >= 50 — page changed?"
+      end
+
+      cidrs
+    end
+
+    # OVHcloud https://docs.ovhcloud.com/en/guides/web-cloud/web-hosting/
+    # clusters-and-shared-hosting-ip.md — 24 shared-hosting clusters, each
+    # with a per-country VIP table plus two fenced ```bash blocks holding a
+    # shared-CDN address and, crucially, the cluster's OUTGOING gateway.
+    #
+    # The 24 gateways are the valuable half: every PHP script on a cluster —
+    # thousands of tenant sites — makes its outbound requests from one of
+    # them, so a request a site receives from 91.134.248.230 is by
+    # construction server-side automation. (High tenancy is the flip side:
+    # consumers must not treat one of these as identifying a single actor.)
+    # The table VIPs are inbound-only but are equally OVH datacenter space,
+    # so we take both and emit every address as a host route.
+    #
+    # Read structurally rather than by bare regex: OVH's sibling docs cite
+    # third-party endpoints, and IBM's page above is the cautionary tale.
+    register "ovh_web_hosting_cluster_md" do |body|
+      tokens = []
+      pending_fenced_ip = false
+      in_fence = false
+      body.each_line do |line|
+        stripped = line.strip
+        if stripped.start_with?("```")
+          in_fence = !in_fence
+          pending_fenced_ip = false unless in_fence
+          next
+        end
+        if in_fence
+          tokens << "#{stripped}/32" if pending_fenced_ip && stripped.match?(/\A\d{1,3}(\.\d{1,3}){3}\z/)
+          next
+        end
+        if stripped.include?("outgoing IP address") || stripped.include?("Shared CDN")
+          pending_fenced_ip = true
+          next
+        end
+        next unless stripped.start_with?("|")
+
+        cells = stripped.split("|").map(&:strip)
+        # | Country | Country Code | IPv4 | IPv6 | -> ["", country, cc, v4, v6]
+        next unless cells.length >= 5 && cells[2].match?(/\A[A-Z]{2}\z/)
+
+        tokens << "#{cells[3]}/32" if cells[3].match?(/\A\d{1,3}(\.\d{1,3}){3}\z/)
+        tokens << "#{cells[4]}/128" if cells[4].match?(/\A[0-9a-fA-F:]+\z/) && cells[4].include?("::")
+      end
+      tokens.uniq!
+      if tokens.length < 100
+        raise ParseError, "ovh_web_hosting_cluster_md: #{tokens.length} addresses, expected >= 100 — page changed?"
+      end
+
+      tokens
+    end
+
+    # Broadcom / Symantec Cloud SWG (ex-Web Security Service) service points.
+    # Broadcom's own docs name this URL in prose for firewall configuration,
+    # which makes it the same shape of publication as Zscaler's CENR feed.
+    #
+    # The document mixes FOUR different container shapes, which is the whole
+    # difficulty:
+    #   wss_datapath[].ingress_egress_ranges[]      -> [{range, go_live_date, shutdown_date}]
+    #   wss_datapath[].ingress_egress_ranges_ipv6[] -> same, and ABSENT on most entries
+    #   wss_egress_routing[].{dedicated,shared}_egress_ranges[].ranges[] -> flat strings
+    #   wss_kps[].country_egress_ranges[].ranges[]  -> flat strings with NO prefix
+    #   web_isolation[].ranges[]                    -> [{range, …}] again
+    #
+    # SKIPPED on purpose: `wss_management` (portal/API service hosts such as
+    # ctc.threatpulse.com — infrastructure Broadcom runs, not customer
+    # browsing egress) and `wss_datapath[].ingress_ips` (tunnel listener
+    # addresses already inside the same site's ranges).
+    #
+    # A range with a PAST shutdown_date is dropped; a future one is kept,
+    # because Broadcom announces retirements weeks ahead and that space is
+    # still carrying traffic today.
+    # Every "*_ranges" (and plain "ranges") key in an allowed section is
+    # range data whatever Broadcom calls it, so new region keys are picked up
+    # without a gem release. "ips"/"ingress_ips" are deliberately not.
+    BROADCOM_RANGE_KEY = /(\A|_)ranges(_ipv6)?\z/.freeze
+
+    register "broadcom_servicepoints_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "broadcom_servicepoints_json: expected object" unless data.is_a?(Hash)
+
+      now = Time.now.utc
+      retired = lambda do |entry|
+        stamp = entry["shutdown_date"]
+        return false unless stamp.is_a?(String)
+
+        begin
+          Time.parse("#{stamp} UTC") < now
+        rescue StandardError
+          false
+        end
+      end
+
+      tokens = []
+      %w[wss_datapath wss_egress_routing wss_kps web_isolation].each do |section|
+        Array(data[section]).each do |site|
+          next unless site.is_a?(Hash)
+
+          site.each do |key, value|
+            next unless key.match?(BROADCOM_RANGE_KEY)
+
+            Array(value).each do |entry|
+              case entry
+              when Hash
+                # Either {range, shutdown_date} or a country group {ranges: [...]}.
+                next if retired.call(entry)
+
+                tokens << entry["range"] if entry["range"].is_a?(String)
+                Array(entry["ranges"]).each { |r| tokens << r if r.is_a?(String) }
+              when String
+                tokens << entry
+              end
+            end
+          end
+        end
+      end
+
+      # wss_kps publishes bare addresses ("168.149.168.0"); make them host routes.
+      tokens = tokens.map { |t| t.include?("/") ? t : "#{t}/#{t.include?(':') ? 128 : 32}" }.uniq
+      if tokens.length < 300
+        raise ParseError, "broadcom_servicepoints_json: #{tokens.length} ranges, expected >= 300 — schema changed?"
+      end
+
+      tokens
     end
 
     # Zscaler CENR: nested {"zscaler.net": {"continent …": {"city …": [{"range": …}]}}}.
@@ -336,6 +761,35 @@ module OpenASN
       tokens.uniq
     end
 
+    # OVPN's client bootstrap API: the whole fleet in ONE request, where the
+    # status-page recipe it replaces needed thirty-two (one per datacenter).
+    # Shape: {"success": true, "datacenters": [{"slug", "city",
+    # "ping_address", "pools": [...], "servers": [{"ip", "ptr", "online", …}]}],
+    # "shadowsocks": {…}}.
+    #
+    # Two deliberate choices. We do NOT filter on `online`: a server that is
+    # briefly down is still OVPN's egress address and dropping it would make
+    # the overlay flap. And we read only `datacenters` — the sibling
+    # `shadowsocks` object carries a shared credential, so nothing outside
+    # `datacenters` is touched and the raw body must never be logged.
+    register "ovpn_client_entry_json" do |body|
+      data = JSON.parse(body)
+      raise ParseError, "ovpn_client_entry_json: success != true — API changed?" unless data["success"] == true
+
+      centers = data["datacenters"]
+      raise ParseError, "ovpn_client_entry_json: expected datacenters array" unless centers.is_a?(Array)
+
+      tokens = centers.flat_map do |center|
+        next [] unless center.is_a?(Hash)
+
+        servers = center["servers"].is_a?(Array) ? center["servers"] : []
+        [center["ping_address"]] + servers.map { |s| s["ip"] if s.is_a?(Hash) }
+      end.compact.uniq
+      raise ParseError, "ovpn_client_entry_json: no server IPs — schema changed?" if tokens.empty?
+
+      tokens
+    end
+
     register "ovpn_status_servers_json" do |body|
       data = JSON.parse(body)
       rows = data["data"]
@@ -393,11 +847,17 @@ module OpenASN
       tokens.uniq
     end
 
+    # SlickVPN redesigned https://www.slickvpn.com/locations/ between
+    # 2026-07-05 and 2026-09-05: the old "hostname printed inside the .ovpn
+    # link text" markup is gone and each location card now carries an
+    # explicit copy-to-clipboard button, `<button data-host="gw1.bos1.
+    # slickvpn.com" title="Copy server address">`, next to an "Active" badge.
+    # Reading data-host is both simpler and stricter than the old pairing
+    # heuristic — it is the exact server address SlickVPN tells its own
+    # users to connect to, with no inference.
     register "slickvpn_locations_html" do |body|
-      tokens = body.scan(%r{<a\b[^>]*href=["']https://members\.newsdemon\.com/vpn/2025/[^"']+\.ovpn["'][^>]*>(.*?)</a>}im).flat_map do |label|
-        label.first.to_s.gsub(/<[^>]*>/, " ").scan(/\bgw\d+\.[a-z0-9.-]+\.slickvpn\.com\b/i)
-      end.map(&:downcase)
-      raise ParseError, "slickvpn_locations_html: no SlickVPN config-linked hostnames — schema changed?" if tokens.empty?
+      tokens = body.scan(/data-host=["']([a-z0-9.-]+\.slickvpn\.com)["']/i).flatten.map(&:downcase)
+      raise ParseError, "slickvpn_locations_html: no data-host server addresses — schema changed?" if tokens.empty?
 
       tokens.uniq
     end

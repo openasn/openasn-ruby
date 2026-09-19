@@ -250,12 +250,20 @@ class ParsersTest < Minitest::Test
     assert_equal ["us-wa.trust.zone", "jp-nfx.trust.zone"], P.parse("trustzone_servers_html", body)
   end
 
+  # Shape verified live 2026-09-05 after SlickVPN's site redesign: each
+  # location card exposes the connect address in a copy button's data-host.
   def test_slickvpn_locations_html
     body = <<~HTML
-      <p>Amsterdam - <a href="https://members.newsdemon.com/vpn/2025/SV-2025-Amsterdam.ovpn">gw2.ams3.slickvpn.com</a></p>
-      <p>Ignored - <a href="https://example.com/SV-2025-Fake.ovpn">gw1.fake.slickvpn.com</a></p>
+      <div class="card"><span>Active</span>
+        <button data-host="gw2.ams3.slickvpn.com" title="Copy server address">Copy</button></div>
+      <div class="card"><span>Active</span>
+        <button data-host="gw1.bos1.slickvpn.com" title="Copy server address">Copy</button></div>
+      <a href="https://members.newsdemon.com/vpn/2025/SV-2025-Amsterdam.ovpn">config</a>
+      <button data-host="tracker.example.com">not a slickvpn host</button>
     HTML
-    assert_equal ["gw2.ams3.slickvpn.com"], P.parse("slickvpn_locations_html", body)
+    assert_equal ["gw2.ams3.slickvpn.com", "gw1.bos1.slickvpn.com"],
+                 P.parse("slickvpn_locations_html", body)
+    assert_raises(P::ParseError) { P.parse("slickvpn_locations_html", "<div>no servers</div>") }
   end
 
   def test_freevpn_us_status_html
@@ -288,11 +296,358 @@ class ParsersTest < Minitest::Test
     assert_equal ["219.100.37.224"], P.parse("vpngate_csv", body)
   end
 
+  # --- verified crawler / agent recognition lists ---------------------------
+
+  def test_crawler_ipranges_json_google_shape
+    body = JSON.generate({ creationTime: "2026-09-04T14:46:55.000000",
+                           prefixes: [{ ipv6Prefix: "2001:4860:4801:10::/64" },
+                                      { ipv4Prefix: "66.249.64.0/27" }] })
+    assert_equal ["2001:4860:4801:10::/64", "66.249.64.0/27"], P.parse("crawler_ipranges_json", body)
+  end
+
+  # Bing, OpenAI, Perplexity and Common Crawl all copied Google's shape
+  # verbatim — one parser, no gem release per new crawler feed.
+  def test_crawler_ipranges_json_covers_every_publisher_of_that_shape
+    bing = JSON.generate({ creationTime: "2024-01-03T10:00:00.121331",
+                           prefixes: [{ ipv4Prefix: "157.55.39.0/24" }] })
+    ccbot = JSON.generate({ synctoken: "20260811134000", notes: "IP ranges used by CCBot.",
+                            prefixes: [{ ipv6Prefix: "2600:1f28:365:8000::/56" }] })
+    assert_equal ["157.55.39.0/24"], P.parse("crawler_ipranges_json", bing)
+    assert_equal ["2600:1f28:365:8000::/56"], P.parse("crawler_ipranges_json", ccbot)
+  end
+
+  def test_crawler_ipranges_json_rejects_drift
+    assert_raises(P::ParseError) { P.parse("crawler_ipranges_json", JSON.generate({ prefixes: [] })) }
+    assert_raises(P::ParseError) { P.parse("crawler_ipranges_json", "[]") }
+    # An HTML error page served at a .json URL must not parse as "no data".
+    assert_raises(P::ParseError) { P.parse("crawler_ipranges_json", "<!DOCTYPE html><html>") }
+  end
+
+  # --- additional cloud / platform publications ------------------------------
+
+  def test_fastly_public_ip_list_json
+    body = JSON.generate({ addresses: ["23.235.32.0/20"], ipv6_addresses: ["2a04:4e40::/32"] })
+    assert_equal ["23.235.32.0/20", "2a04:4e40::/32"], P.parse("fastly_public_ip_list_json", body)
+  end
+
+  # GitHub mixes CIDR arrays with ssh keys, booleans and objects, and adds
+  # service groups regularly — take every CIDR, ignore everything else.
+  def test_github_meta_json_takes_every_cidr_group_and_ignores_the_rest
+    body = JSON.generate({ verifiable_password_authentication: true,
+                           ssh_key_fingerprints: { SHA256_RSA: "uNiVztksC..." },
+                           ssh_keys: ["ssh-ed25519 AAAAC3Nz"],
+                           hooks: ["192.30.252.0/22", "2a0a:a440::/29"],
+                           actions: ["4.148.0.0/16"],
+                           domains: { website: ["*.github.com"] } })
+    assert_equal ["192.30.252.0/22", "2a0a:a440::/29", "4.148.0.0/16"],
+                 P.parse("github_meta_json", body)
+  end
+
+  def test_atlassian_ipranges_json
+    body = JSON.generate({ creationDate: "2026-09-01", syncToken: 1,
+                           items: [{ network: "13.52.5.0", mask_len: 24, cidr: "13.52.5.0/24",
+                                     product: ["jira"], direction: ["egress"] }] })
+    assert_equal ["13.52.5.0/24"], P.parse("atlassian_ipranges_json", body)
+  end
+
+  # Cisco's SSE geofeed publishes 142 single egress addresses with a bogus
+  # /32 mask. Widening one of those claims 2^96 addresses on the evidence of
+  # a pinhole, so a row with host bits set becomes a host route.
+  def test_geofeed_csv_no_widen_host_routes_instead_of_widening
+    body = <<~CSV
+      46.255.40.0/24,US,US-TX,Dallas,
+      2a04:e4c0:aa::/48,AE,,Dubai,
+      2603:5004:e0:107::135b/32,DE,DE-HE,FRANKFURT,
+      151.186.172.35/32,,
+      198.51.100.7/24,US,,,
+    CSV
+    tokens = P.parse("geofeed_csv_no_widen", body)
+    assert_equal ["46.255.40.0/24", "2a04:e4c0:aa::/48", "2603:5004:e0:107::135b/128",
+                  "151.186.172.35/32", "198.51.100.7/32"], tokens
+  end
+
+  def test_geofeed_csv_no_widen_refuses_an_empty_feed
+    assert_raises(P::ParseError) { P.parse("geofeed_csv_no_widen", "\n# nothing here\n") }
+  end
+
+  # Cato's page concatenates dash-delimited ranges inside single table cells
+  # ("140.82.194.1 - 140.82.194.254113.30.130.1 - …"), which is how you get
+  # corrupt octets out of it. Requiring a prefix length is what keeps them out.
+  def test_cato_pop_html_takes_cidrs_and_ignores_the_dash_range_tables
+    body = +"<html><body><td>140.82.194.1 - 140.82.194.254113.30.130.1 - 113.30.130.254</td>"
+    body << "<td>version 1.2.3/4</td>"
+    35.times { |i| body << "<p>45.#{62 + i}.176.0/20</p>" }
+    body << "<p>216.205.112.0/20</p><p>216.205.112.0/20</p></body></html>"
+    tokens = P.parse("cato_pop_html", body)
+    assert_equal 36, tokens.length          # 35 unique + one duplicate collapsed
+    assert_includes tokens, "45.62.176.0/20"
+    refute_includes tokens, "1.2.3/4"       # prefix length 4 is outside 19..32
+    refute(tokens.any? { |t| t.start_with?("06.") || t.start_with?("14.94") })
+  end
+
+  def test_cato_pop_html_refuses_a_page_that_lost_its_list
+    assert_raises(P::ParseError) { P.parse("cato_pop_html", "<html><p>45.62.176.0/20</p></html>") }
+  end
+
+  # OVPN's client bootstrap API: whole fleet in one request. An offline
+  # server is still OVPN egress, so `online` must NOT be a filter — and
+  # nothing outside `datacenters` is read, because `shadowsocks` holds a
+  # shared credential.
+  def test_ovpn_client_entry_json
+    body = JSON.generate({ success: true,
+                           datacenters: [{ slug: "vienna", city: "Vienna",
+                                           ping_address: "37.120.212.227",
+                                           pools: ["pool-1.prd.at.vienna.ovpn.com"],
+                                           servers: [{ ip: "37.120.212.227", ptr: "vpn44.prd.vienna.ovpn.com",
+                                                       online: true },
+                                                     { ip: "37.120.212.228", online: false }] }],
+                           shadowsocks: { password: "must-not-leak" } })
+    assert_equal ["37.120.212.227", "37.120.212.228"], P.parse("ovpn_client_entry_json", body)
+  end
+
+  def test_ovpn_client_entry_json_rejects_drift
+    assert_raises(P::ParseError) { P.parse("ovpn_client_entry_json", JSON.generate({ datacenters: [] })) }
+    assert_raises(P::ParseError) { P.parse("ovpn_client_entry_json", JSON.generate({ success: true })) }
+    assert_raises(P::ParseError) do
+      P.parse("ovpn_client_entry_json", JSON.generate({ success: true, datacenters: [{ slug: "x" }] }))
+    end
+  end
+
+  # Broadcom mixes four container shapes in one document, publishes bare
+  # addresses in one of them, and puts its own portal hosts in a section that
+  # must never be read as customer egress.
+  def test_broadcom_servicepoints_json_reads_every_range_shape_and_skips_management
+    # 160 synthetic sites clear the >= 300 sanity floor the parser enforces
+    sites = 160.times.map do |i|
+      { site: "site#{i}", region: "emea",
+        ingress_egress_ranges: [{ go_live_date: "2022-01-01 00:00:00",
+                                  range: "199.247.#{i % 200}.0/24", shutdown_date: nil }],
+        ingress_egress_ranges_ipv6: [{ range: "2604:b040:13:#{i}00::/80", shutdown_date: nil }],
+        ingress_ips: ["203.0.113.#{i}"] }
+    end
+    body = JSON.generate({ timestamp: 1_789_009_204.17,
+                           wss_datapath: sites,
+                           wss_egress_routing: [{ site: "gcamo", region: "na",
+                                                  dedicated_egress_ranges: [{ country_code: "CA",
+                                                                              ranges: ["34.152.56.0/25"] }],
+                                                  shared_egress_ranges: [{ country_code: "US",
+                                                                           ranges: ["8.38.150.1/32"] }] }],
+                           wss_kps: [{ site: "ginmu",
+                                       country_egress_ranges: [{ country_code: "IN",
+                                                                 ranges: ["168.149.168.0"] }] }],
+                           web_isolation: [{ ranges: [{ range: "34.95.42.192/27", shutdown_date: nil }],
+                                             ips: [] }],
+                           wss_management: [{ domain: "ctc.threatpulse.com", service: "ctc",
+                                              ips: [{ ip: "130.211.30.2", shutdown_date: nil }],
+                                              ranges: [] }] })
+    tokens = P.parse("broadcom_servicepoints_json", body)
+    assert_includes tokens, "199.247.7.0/24"
+    assert_includes tokens, "2604:b040:13:700::/80"
+    assert_includes tokens, "34.152.56.0/25"          # flat-array-of-strings shape
+    assert_includes tokens, "8.38.150.1/32"
+    assert_includes tokens, "168.149.168.0/32"        # bare address gets a host route
+    assert_includes tokens, "34.95.42.192/27"
+    refute_includes tokens, "130.211.30.2/32"         # wss_management is not customer egress
+    refute_includes tokens, "203.0.113.7/32"          # ingress_ips are tunnel listeners
+  end
+
+  def test_broadcom_servicepoints_json_drops_retired_ranges_and_refuses_a_thin_document
+    thin = JSON.generate({ wss_datapath: [{ ranges: [{ range: "1.2.3.0/24", shutdown_date: "2020-01-01 00:00:00" }] }] })
+    assert_raises(P::ParseError) { P.parse("broadcom_servicepoints_json", thin) }
+    assert_raises(P::ParseError) { P.parse("broadcom_servicepoints_json", "[]") }
+  end
+
+  # --- documentation-as-data clouds ------------------------------------------
+
+  # Scaleway's page has TWO bullet lists of addresses. Only the first is
+  # prefix data; the second is DNS/NTP resolver hosts. Getting the section
+  # boundary wrong is the whole risk, so the fixture reproduces it.
+  def test_scaleway_network_mdx_reads_only_the_ip_ranges_section
+    body = <<~MDX
+      ---
+      title: Scaleway network information
+      dates:
+        validation: 2025-06-27
+      ---
+
+      ## IP ranges used by Scaleway
+
+      Currently, we use the following IP ranges:
+
+      ### IPv4
+      * `62.210.0.0/16`
+      * `195.154.0.0/16`
+      * `212.129.0.0/18`
+      * `62.4.0.0/19`
+      * `212.83.128.0/19`
+      * `212.83.160.0/19`
+      * `212.47.224.0/19`
+      * `163.172.0.0/16`
+      * `51.15.0.0/16`
+      * `151.115.0.0/16`
+      * `51.158.0.0/15`
+      * `78.232.0.0/16`
+
+      ### IPv6
+      * `2001:bc8::/32`
+
+      ## DNS cache servers and NTP servers
+
+      #### fr-par-1
+
+      - `51.159.69.162`
+      - `2001:bc8:408:1::12`
+
+      ## Additional Dedibox services
+
+      Our monitoring servers are located in the IP subnet `62.210.16.0/24`.
+    MDX
+    tokens = P.parse("scaleway_network_mdx", body)
+    assert_equal 13, tokens.length
+    assert_includes tokens, "62.210.0.0/16"
+    assert_includes tokens, "2001:bc8::/32"
+    refute_includes tokens, "51.159.69.162"
+    refute_includes tokens, "62.210.16.0/24"
+  end
+
+  def test_scaleway_network_mdx_refuses_a_truncated_page
+    assert_raises(P::ParseError) do
+      P.parse("scaleway_network_mdx", "## IP ranges used by Scaleway\n\n### IPv4\n* `62.210.0.0/16`\n")
+    end
+  end
+
+  # The single most dangerous document in the manifest: 509 of IBM's 759
+  # CIDRs are RFC1918. Two independent guards must both hold.
+  def test_ibm_cloud_ip_ranges_markdown_keeps_public_sections_only
+    body = <<~MD
+      ---
+      last-updated: 2026-06-09
+      ---
+
+      ## Front-end (public) network
+      {: #front-end-network}
+
+      |Data center|City|IP range|
+      |---|---|---|
+      |ams03|Amsterdam |159.8.198.0/23|
+      |dal05|Dallas |50.23.203.0/24  \\n 108.168.157.0/24  \\n 173.192.117.0/24|
+      FRONT_END_FILLER
+
+      ## Load balancer IPs
+      {: #load-balancer-ips}
+
+      |Data center|City|IP range|
+      |---|---|---|
+      |ams03|Amsterdam|159.8.197.0/24|
+
+      ## Back-end (private) network
+      {: #back-end-network}
+
+      |Data center|City|IP range|
+      |---|---|---|
+      |ams03|Amsterdam|10.2.64.0/19|
+
+      ### Customer private network space
+
+      |IP range|
+      |---|
+      |172.16.0.0/12|
+
+      ## Legacy networks
+      {: #legacy-networks}
+
+      |IP range|
+      |---|
+      |12.96.160.0/24|
+      |216.12.193.9|
+
+      ## Red Hat Enterprise Linux server requirements
+
+      | Server location | Permitted data centers | IP ranges |
+      |---|---|---|
+      | Amsterdam (ams03) | fra02 | 161.26.36.0/22 |
+
+      ## Windows virtual server instance requirements
+
+      |Data Center|City|BCR IP Range|
+      |---|---|---|
+      |tok04|Tokyo|10.3.17.0/24 \\n 10.192.0.0/16|
+    MD
+    # enough real rows to clear the >= 50 sanity floor the parser enforces
+    filler = (1..60).map { |i| "|dc#{i}|City |169.4#{i / 10}.#{i}.0/24|" }.join("\n")
+    tokens = P.parse("ibm_cloud_ip_ranges_markdown", body.sub("FRONT_END_FILLER", filler))
+    # multi-CIDR cells split on the LITERAL backslash-n
+    assert_includes tokens, "108.168.157.0/24"
+    assert_includes tokens, "173.192.117.0/24"
+    assert_includes tokens, "159.8.197.0/24"
+    # bare legacy address becomes a host route
+    assert_includes tokens, "216.12.193.9/32"
+    # private space never survives, by section AND by RFC1918 guard
+    refute_includes tokens, "10.2.64.0/19"
+    refute_includes tokens, "172.16.0.0/12"
+    refute_includes tokens, "10.192.0.0/16"
+    # third-party endpoints a customer must reach are not IBM space
+    refute_includes tokens, "161.26.36.0/22"
+  end
+
+  def test_ibm_cloud_ip_ranges_markdown_refuses_a_page_that_lost_its_public_tables
+    body = "## Back-end (private) network\n\n|dc|city|range|\n|---|---|---|\n|ams03|Amsterdam|10.2.64.0/19|\n"
+    assert_raises(P::ParseError) { P.parse("ibm_cloud_ip_ranges_markdown", body) }
+  end
+
+  # OVH's 24 cluster gateways are the point of the recipe; the country VIP
+  # tables come along because they are equally OVH datacenter space.
+  def test_ovh_web_hosting_cluster_md_takes_vips_and_the_outgoing_gateway
+    cluster = lambda do |n, v4, v6, cdn, gw|
+      <<~MD
+        #### Cluster #{n}
+
+        Below are the **cluster** IP addresses for each country (for geolocation):
+        | Country        | Country Code | IPv4           | IPv6                 |
+        | -------------- | ------------ | -------------- | -------------------- |
+        | France         | FR           | #{v4}  | #{v6}    |
+        If you have activated the **Shared CDN** option on your Web Hosting, use this IP address:
+        ```bash
+        #{cdn}
+        ```
+        If you need the **outgoing IP address** of the Web Hosting cluster (gateway), use this IP address:
+        ```bash
+        #{gw}
+        ```
+      MD
+    end
+    body = +"---\nlastUpdated: 2026-07-21\n---\n\n# Web Hosting - List of IP addresses by cluster\n\n"
+    # 60 synthetic clusters clear the >= 100 sanity floor the parser enforces
+    60.times { |i| body << cluster.call(i, "188.165.61.#{i}", "2001:41d0:301::#{i}", "46.105.204.#{i}", "91.134.248.#{i}") }
+    tokens = P.parse("ovh_web_hosting_cluster_md", body)
+    assert_includes tokens, "188.165.61.7/32"
+    assert_includes tokens, "2001:41d0:301::7/128"
+    assert_includes tokens, "46.105.204.7/32"
+    assert_includes tokens, "91.134.248.7/32"
+    assert_equal 240, tokens.length
+  end
+
+  def test_ovh_web_hosting_cluster_md_refuses_a_page_that_lost_its_tables
+    assert_raises(P::ParseError) do
+      P.parse("ovh_web_hosting_cluster_md", "# Web Hosting\n\nNo addresses here any more.\n")
+    end
+  end
+
+  def test_json_string_array
+    assert_equal ["1.2.3.0/24", "2001:db8::/32"],
+                 P.parse("json_string_array", JSON.generate(["1.2.3.0/24", "2001:db8::/32"]))
+    assert_raises(P::ParseError) { P.parse("json_string_array", JSON.generate({})) }
+    assert_raises(P::ParseError) { P.parse("json_string_array", "[]") }
+  end
+
   def test_schema_drift_raises_parse_error
     assert_raises(P::ParseError) { P.parse("aws_json", "{}") }
     assert_raises(P::ParseError) { P.parse("mullvad_relays_json", "[]") }
     assert_raises(P::ParseError) { P.parse("aws_json", "not json") }
     assert_raises(P::ParseError) { P.parse("nope_parser", "x") }
+    assert_raises(P::ParseError) { P.parse("fastly_public_ip_list_json", "{}") }
+    assert_raises(P::ParseError) { P.parse("github_meta_json", JSON.generate({ ssh_keys: ["x"] })) }
+    assert_raises(P::ParseError) { P.parse("atlassian_ipranges_json", "{}") }
   end
 
   private
@@ -319,10 +674,67 @@ class ParsersTest < Minitest::Test
 end
 
 class CidrUtilsTest < Minitest::Test
+  U = OpenASN::CidrUtils
+
   def test_ranges_by_family_merges_and_splits
-    out = OpenASN::CidrUtils.ranges_by_family(["1.0.0.0/25", "1.0.0.128/25", "junk", "2001:db8::/64"])
+    out = U.ranges_by_family(["1.0.0.0/25", "1.0.0.128/25", "junk", "2001:db8::/64"])
     assert_equal [[IPAddr.new("1.0.0.0").to_i, IPAddr.new("1.0.0.255").to_i]], out[:ipv4]
     assert_equal 1, out[:ipv6].length
+  end
+
+  # subtract() is the range math under the Tier B bogon filter. Pure
+  # arithmetic, so it is tested on small integers where every boundary is
+  # readable — off-by-ones here become mis-clipped provider space.
+  def test_subtract_no_overlap_returns_the_range_unchanged
+    assert_equal [[10, 20]], U.subtract(10, 20, [[30, 40]])
+    assert_equal [[10, 20]], U.subtract(10, 20, [[1, 5]])
+    assert_equal [[10, 20]], U.subtract(10, 20, [])
+  end
+
+  def test_subtract_touching_but_not_overlapping_is_not_an_overlap
+    assert_equal [[10, 20]], U.subtract(10, 20, [[1, 9]])
+    assert_equal [[10, 20]], U.subtract(10, 20, [[21, 30]])
+  end
+
+  def test_subtract_punches_a_hole_and_keeps_both_sides
+    assert_equal [[10, 13], [16, 20]], U.subtract(10, 20, [[14, 15]])
+  end
+
+  def test_subtract_trims_each_edge
+    assert_equal [[16, 20]], U.subtract(10, 20, [[1, 15]])
+    assert_equal [[10, 14]], U.subtract(10, 20, [[15, 30]])
+  end
+
+  def test_subtract_fully_covered_yields_nothing
+    assert_empty U.subtract(10, 20, [[10, 20]])
+    assert_empty U.subtract(10, 20, [[1, 100]])
+  end
+
+  def test_subtract_applies_every_blocked_range_in_turn
+    assert_equal [[11, 11], [15, 15], [19, 20]], U.subtract(10, 20, [[1, 10], [12, 14], [16, 18]])
+  end
+
+  def test_subtract_handles_a_single_address_range
+    assert_empty U.subtract(42, 42, [[40, 50]])
+    assert_equal [[42, 42]], U.subtract(42, 42, [[43, 50]])
+  end
+
+  # The bogon table itself must be sorted and merged, because subtract's
+  # early `break` assumes it. A future editor appending an out-of-order
+  # prefix would silently stop clipping everything after it.
+  def test_the_bogon_table_is_sorted_and_merged
+    OpenASN::TierB::BOGON_RANGES.each do |family, ranges|
+      ranges.each_cons(2) do |(_, a_end), (b_start, _)|
+        assert_operator b_start, :>, a_end + 1,
+                        "#{family} bogon table is not sorted+merged: #{a_end} then #{b_start}"
+      end
+    end
+  end
+
+  def test_every_bogon_prefix_parses
+    OpenASN::TierB::BOGON_CIDRS.each do |cidr|
+      refute_nil U.parse(cidr), "unparseable bogon prefix #{cidr.inspect}"
+    end
   end
 end
 
@@ -417,6 +829,93 @@ class TierBExecutorTest < Minitest::Test
     assert_equal :relay, OpenASN.lookup("1.0.30.10").verdict
   end
 
+  # The headline end-to-end guarantee of the 2026-09 crawler work. Measured
+  # on the real feeds: 27 of 28 Bingbot prefixes and 100% of OpenAI's sit
+  # inside Azure's published ranges, and 23 of 317 Googlebot prefixes sit
+  # inside GCP's. So the cloud overlay legitimately WINS the verdict and the
+  # provider slot — and the crawler identity must survive that anyway. This
+  # test builds exactly that collision: one IP claimed by both a cloud
+  # source and a crawler source.
+  def test_crawler_attribution_survives_a_cloud_overlay_claiming_the_same_ip
+    cloud = "https://cloud.example/ranges.json"
+    bot = "https://operator.example/gptbot.json"
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [
+        { id: "aws", url: cloud, parser: "json_string_array", maps_to: "hosting",
+          provider: "cloudco", cadence_hours: 24 },
+        { id: "openai_gptbot", url: bot, parser: "crawler_ipranges_json", maps_to: "hosting",
+          provider: "gptbot", role: "verified_crawler", cadence_hours: 24 }
+      ]
+    }))
+    # The crawler /28 sits INSIDE the cloud /16.
+    stub_request(:get, cloud).to_return(status: 200, body: JSON.generate(["23.102.0.0/16"]))
+    stub_request(:get, bot).to_return(status: 200, body: JSON.generate(
+      { creationTime: "2026-09-04T18:03:29.248484", prefixes: [{ ipv4Prefix: "23.102.140.112/28" }] }
+    ))
+    configure { |c| c.tier_b = { clouds: true, verified_crawlers: true } }
+    assert execute
+
+    inside = OpenASN.lookup("23.102.140.115")
+    assert_equal :hosting, inside.verdict          # the network really is a datacenter
+    assert_equal "cloudco", inside.provider        # the cloud overlay legitimately wins
+    assert_equal "gptbot", inside.crawler          # …and the identity still surfaces
+    assert_predicate inside, :verified_crawler?
+    assert_includes inside.context_flags, :verified_crawler
+
+    # An address in the cloud range but outside the crawler /28 gets the same
+    # verdict and NO attribution — the whole point of per-prefix lists.
+    outside = OpenASN.lookup("23.102.9.9")
+    assert_equal :hosting, outside.verdict
+    assert_equal "cloudco", outside.provider
+    assert_nil outside.crawler
+    refute_predicate outside, :verified_crawler?
+  end
+
+  # A user-triggered fetcher is a human waiting on a page, so it must never
+  # be reported as autonomous crawler traffic (see Classifier::CRAWLER_ROLES).
+  def test_verified_fetcher_role_round_trips_through_the_store
+    url = "https://operator.example/chatgpt-user.json"
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "openai_chatgpt_user", url: url, parser: "crawler_ipranges_json",
+                  maps_to: "hosting", provider: "chatgpt-user", role: "verified_fetcher",
+                  cadence_hours: 6 }]
+    }))
+    stub_request(:get, url).to_return(status: 200, body: JSON.generate(
+      { creationTime: "2026-09-04T18:03:29.248484", prefixes: [{ ipv4Prefix: "1.0.30.0/24" }] }
+    ))
+    configure { |c| c.tier_b = { verified_crawlers: true } }
+    assert execute
+
+    assert_equal "verified_fetcher", OpenASN::OverlayStore.new(@test_data_dir)
+                                                          .source_state("openai_chatgpt_user")["role"]
+    r = OpenASN.lookup("1.0.30.10")
+    assert_equal "chatgpt-user", r.crawler
+    assert_predicate r, :verified_fetcher?
+    refute_predicate r, :verified_crawler?
+    assert_includes r.context_flags, :verified_fetcher
+  end
+
+  # A source with no role must behave exactly as it did before roles existed.
+  def test_a_source_without_a_role_produces_no_attribution
+    url = "https://cloud.example/ranges.json"
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "aws", url: url, parser: "json_string_array", maps_to: "hosting",
+                  provider: "cloudco", cadence_hours: 24 }]
+    }))
+    stub_request(:get, url).to_return(status: 200, body: JSON.generate(["1.0.30.0/24"]))
+    configure { |c| c.tier_b = { clouds: true } }
+    assert execute
+
+    r = OpenASN.lookup("1.0.30.10")
+    assert_equal "cloudco", r.provider
+    assert_nil r.crawler
+    assert_nil r.crawler_role
+    assert_empty r.context_flags
+  end
+
   def test_unknown_parser_is_skipped_gracefully
     File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
       schema_version: 1,
@@ -486,5 +985,317 @@ class TierBExecutorTest < Minitest::Test
     assert_equal "Test Relay", r.provider
   ensure
     OpenASN::TierB.dns_resolver = old_resolver
+  end
+end
+
+# The bundled seed's fetch-manifest and the gem's own feature map are two
+# halves of one contract, and nothing linked them before: a source could be
+# added to fetch-manifest.json, ship, and be silently NEVER FETCHED because
+# no feature switch listed its id (or reference a parser this gem does not
+# have). Both mistakes are invisible at runtime — the executor just skips.
+class BundledManifestConsistencyTest < Minitest::Test
+  MANIFEST = JSON.parse(File.read(File.join(OpenASN::Snapshot::SEED_DIR, "fetch-manifest.json"))).freeze
+
+  def manifest_ids = MANIFEST["sources"].map { |s| s["id"] }
+
+  def mapped_ids = OpenASN::Configuration::TIER_B_SOURCE_MAP.values.flatten
+
+  def test_every_manifest_source_is_reachable_from_some_feature_switch
+    orphans = manifest_ids - mapped_ids
+    assert_empty orphans, "fetch-manifest sources no feature switch can enable: #{orphans.inspect}"
+  end
+
+  def test_every_mapped_source_id_exists_in_the_manifest
+    dangling = mapped_ids - manifest_ids
+    assert_empty dangling, "TIER_B_SOURCE_MAP names sources the manifest does not define: #{dangling.inspect}"
+  end
+
+  def test_every_manifest_parser_is_implemented_by_this_gem
+    missing = MANIFEST["sources"].map { |s| s["parser"] }.uniq.reject { |p| OpenASN::Parsers.known?(p) }
+    assert_empty missing, "fetch-manifest references parsers this gem lacks: #{missing.inspect}"
+  end
+
+  def test_feature_defaults_and_source_map_cover_the_same_switches
+    assert_equal OpenASN::Configuration::TIER_B_DEFAULTS.keys.sort,
+                 OpenASN::Configuration::TIER_B_SOURCE_MAP.keys.sort
+  end
+
+  # The manifest's per-source `enabled_default` and the gem's per-GROUP default
+  # are two statements of the same fact, made in two repos, and only the gem's
+  # one has any effect: the executor asks `enabled_tier_b_source_ids`, which
+  # consults TIER_B_DEFAULTS, and never reads `enabled_default` at all.
+  #
+  # So a disagreement is invisible at runtime and actively misleading to
+  # everyone else: the manifest is what a fourth-language client, a reviewer,
+  # or PROVIDER_SOURCES.md reads to decide whether a source ships on. A recipe
+  # documented `enabled_default: true` that lands in an opt-in group is a
+  # source the docs promise and the gem never fetches.
+  #
+  # Whole groups may of course flip on or off — that is one edit here and one
+  # in the manifest, which is exactly the coupling this test exists to force.
+  def test_manifest_enabled_default_agrees_with_the_groups_default
+    group_of = {}
+    OpenASN::Configuration::TIER_B_SOURCE_MAP.each do |group, ids|
+      ids.each { |id| group_of[id] = group }
+    end
+
+    disagreements = MANIFEST["sources"].filter_map do |s|
+      group = group_of[s["id"]]
+      next unless group # orphans are already a failure in their own test
+
+      group_default = OpenASN::Configuration::TIER_B_DEFAULTS.fetch(group)
+      next if s["enabled_default"] == group_default
+
+      "#{s['id']}: manifest says #{s['enabled_default'].inspect}, " \
+        "but group #{group} defaults to #{group_default.inspect}"
+    end
+
+    assert_empty disagreements,
+                 "fetch-manifest enabled_default disagrees with TIER_B_DEFAULTS:\n  #{disagreements.join("\n  ")}"
+  end
+
+  # A source with no `enabled_default` key reads as "off" to a human and as
+  # nil to a parser, while the gem happily fetches it if its group is on.
+  def test_every_source_states_an_enabled_default
+    silent = MANIFEST["sources"].reject { |s| [true, false].include?(s["enabled_default"]) }
+    assert_empty silent.map { |s| s["id"] },
+                 "sources with a missing or non-boolean enabled_default"
+  end
+
+  def test_every_source_declares_the_fields_the_executor_relies_on
+    MANIFEST["sources"].each do |s|
+      assert s["id"].is_a?(String), "source without an id: #{s.inspect}"
+      assert s["maps_to"].is_a?(String), "#{s['id']}: missing maps_to"
+      assert s["cadence_hours"].is_a?(Integer), "#{s['id']}: missing cadence_hours"
+      assert s.key?("url") || s.key?("urls") || s["resolver"], "#{s['id']}: no URL or resolver"
+      # `role` is optional, but when present it must be one this gem acts on,
+      # otherwise the attribution silently disappears.
+      if s.key?("role")
+        assert_includes OpenASN::Classifier::CRAWLER_ROLES, s["role"], "#{s['id']}: unknown role"
+      end
+    end
+  end
+
+  # maps_to is either a verdict this gem's classifier consults or a "flag:*"
+  # context flag. A typo here is a source that fetches and then does nothing.
+  def test_maps_to_values_are_ones_the_classifier_acts_on
+    consulted = %w[relay tor_exit vpn enterprise_gateway hosting]
+    MANIFEST["sources"].each do |s|
+      m = s["maps_to"]
+      next if m.start_with?("flag:")
+
+      assert_includes consulted, m, "#{s['id']}: maps_to #{m.inspect} is never consulted"
+    end
+  end
+end
+
+# A Tier B source is a REMOTE PARTY this project does not control. Live audit
+# 2026-09-12: Vultr's RFC 8805 geofeed publishes seven IANA special-purpose
+# prefixes as its own space, including all of 6to4 — whose addresses embed a
+# real end user's IPv4 address. With `clouds` on by default, every client was
+# calling those people a Vultr datacenter. These tests pin the fix: CLIP the
+# bogons out of every Tier B overlay, keep the legitimate remainder, and say
+# out loud which source published them.
+class TierBBogonFilterTest < Minitest::Test
+  VULTR = "https://geofeed.constant.com/"
+
+  def setup
+    super
+    FixtureData.install_canonical(@test_data_dir)
+    @log = StringIO.new
+    configure do |c|
+      c.logger = Logger.new(@log, level: Logger::WARN)
+      c.tier_b = { apple_relay: false, tor: false, clouds: true, verified_crawlers: false,
+                   vpn_providers: false, zscaler: false, nazgul_mixed: false }
+    end
+    write_manifest("geofeed_csv")
+  end
+
+  # One source, so a failure names one thing. `vultr` because it is the real
+  # offender and its recipe is in the default-ON `clouds` group.
+  def write_manifest(parser)
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "vultr", url: VULTR, parser: parser, maps_to: "hosting",
+                  provider: "vultr", cadence_hours: 24 }]
+    }))
+  end
+
+  def execute(force: true)
+    http = OpenASN::HttpClient.new(user_agent: OpenASN.configuration.user_agent,
+                                   logger: OpenASN.configuration.logger)
+    OpenASN::TierB.new(OpenASN.configuration, http).execute(force: force)
+  end
+
+  # Read the overlay back off DISK and unpack it, rather than trusting an
+  # in-memory value: the bytes that ship to the classifier are the thing
+  # under test, and a filter that ran but wrote the unfiltered array would
+  # pass any assertion made before the write.
+  def overlay_ranges(family = :ipv4)
+    path = File.join(@test_data_dir, "overlays", "vultr-#{family}.bin")
+    return [] unless File.exist?(path)
+
+    bytes = File.binread(path)
+    asz = family == :ipv4 ? 4 : 16
+    unpack = family == :ipv4 ? ->(s) { s.unpack1("N") } : ->(s) { hi, lo = s.unpack("Q>Q>"); (hi << 64) | lo }
+    (bytes.bytesize / (asz * 2)).times.map do |i|
+      off = i * asz * 2
+      [unpack.call(bytes[off, asz]), unpack.call(bytes[off + asz, asz])]
+    end
+  end
+
+  # The abbreviated real thing: the seven prefixes verified live at
+  # https://geofeed.constant.com/ on 2026-09-12, plus two genuine Vultr
+  # ranges so the source is not entirely bogus.
+  def test_the_real_vultr_geofeed_rows_are_clipped_and_the_genuine_ones_survive
+    stub_request(:get, VULTR).to_return(status: 200, body: <<~CSV)
+      # Vultr geofeed (abbreviated for test)
+      104.238.128.0/24,US,US-NJ,Piscataway,
+      192.0.2.0/24,US,,,
+      198.51.100.0/24,US,,,
+      203.0.113.0/24,US,,,
+      2001:19f0:5::/48,US,US-NJ,Piscataway,
+      2001:2::/48,US,,,
+      2001:10::/28,US,,,
+      2001:db8::/32,US,,,
+      2002::/16,US,,,
+    CSV
+
+    assert execute
+    r = OpenASN.lookup("104.238.128.10")
+    assert_equal :hosting, r.verdict
+    assert_equal "vultr", r.provider
+
+    # Every one of the seven is gone…
+    %w[192.0.2.10 198.51.100.10 203.0.113.10].each do |ip|
+      refute_equal "vultr", OpenASN.lookup(ip).provider, "#{ip} still attributed to vultr"
+    end
+    %w[2001:2::10 2001:10::10 2001:db8::10].each do |ip|
+      refute_equal "vultr", OpenASN.lookup(ip).provider, "#{ip} still attributed to vultr"
+    end
+    # …and the legitimate v6 range is untouched.
+    assert_equal "vultr", OpenASN.lookup("2001:19f0:5::10").provider
+
+    assert_equal 1, overlay_ranges(:ipv4).length
+    assert_equal 1, overlay_ranges(:ipv6).length
+  end
+
+  # The one that matters most. A 6to4 address embeds the user's real IPv4
+  # address in bits 16..47 — 2002:5db8:d822:: is 93.184.216.34 over 6to4.
+  # Before the filter, that residential visitor was reported as a Vultr
+  # datacenter, which is a false positive against a real person: the exact
+  # failure mode the project's "prefer false negatives" rule exists to stop.
+  def test_a_6to4_end_user_is_not_reported_as_a_datacenter
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n2002::/16,US,,,\n")
+    assert execute
+
+    r = OpenASN.lookup("2002:5db8:d822::1")
+    refute_equal "vultr", r.provider
+    refute_includes r.sources.map(&:to_s), "vultr"
+  end
+
+  # CLIP, not drop: a range that merely overlaps keeps its remainder. A
+  # filter that deleted the whole /22 because it touched a bogon would be
+  # worse than the bug it fixes.
+  def test_a_straddling_range_keeps_its_legitimate_halves
+    # 192.0.0.0/22 = 192.0.0.0-192.0.3.255. 192.0.0.0/24 (IETF protocol
+    # assignments) and 192.0.2.0/24 (TEST-NET-1) are bogons; the other two
+    # /24s are ordinary space.
+    stub_request(:get, VULTR).to_return(status: 200, body: "192.0.0.0/22,US,,,\n")
+    assert execute
+
+    ranges = overlay_ranges(:ipv4)
+    assert_equal 2, ranges.length
+    assert_equal [IPAddr.new("192.0.1.0").to_i, IPAddr.new("192.0.1.255").to_i], ranges[0]
+    assert_equal [IPAddr.new("192.0.3.0").to_i, IPAddr.new("192.0.3.255").to_i], ranges[1]
+  end
+
+  # A source that is ENTIRELY special-purpose parses to 0 ranges and takes
+  # the pre-existing keep-stale branch. That is the correct outcome, not a
+  # special case: "the file says nothing usable" is upstream breakage.
+  def test_an_all_bogon_source_is_keep_stale_not_an_empty_overlay
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n")
+    assert execute
+    assert_equal "vultr", OpenASN.lookup("104.238.128.10").provider
+
+    stub_request(:get, VULTR).to_return(status: 200, body: "192.0.2.0/24,US,,,\n203.0.113.0/24,US,,,\n")
+    refute execute
+
+    state = OpenASN::OverlayStore.new(@test_data_dir).source_state("vultr")
+    assert_match(/0 ranges/, state["last_error"])
+    # Yesterday's good overlay is still live.
+    assert_equal "vultr", OpenASN.lookup("104.238.128.10").provider
+  end
+
+  # The too-aggressive failure mode. IANA marks these Globally Reachable, so
+  # an operator may legitimately announce them and eating them would be our
+  # bug, not theirs.
+  def test_globally_reachable_special_registry_blocks_are_kept
+    body = ["192.31.196.0/24,US,,,",   # AS112-v4
+            "192.52.193.0/24,US,,,",   # AMT (RFC 7450)
+            "192.175.48.0/24,US,,,",   # AS112 direct delegation
+            "64:ff9b::/96,US,,,",      # NAT64 well-known prefix
+            "2620:4f:8000::/48,US,,,"].join("\n") + "\n" # AS112 direct delegation v6
+    stub_request(:get, VULTR).to_return(status: 200, body: body)
+    assert execute
+
+    assert_equal 3, overlay_ranges(:ipv4).length
+    assert_equal 2, overlay_ranges(:ipv6).length
+    assert_empty @log.string, "nothing was clipped, so nothing should have been logged"
+  end
+
+  # Its local-use sibling IS filtered — same registry, different
+  # reachability, and the distinction is the whole rule.
+  def test_the_local_use_translation_prefix_is_filtered
+    stub_request(:get, VULTR).to_return(status: 200, body: "64:ff9b:1::/48,US,,,\n2001:19f0:5::/48,US,,,\n")
+    assert execute
+    assert_equal 1, overlay_ranges(:ipv6).length
+    assert_match(/64:ff9b:1::/, @log.string)
+  end
+
+  def test_ordinary_space_logs_nothing
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n2001:19f0:5::/48,US,,,\n")
+    assert execute
+    assert_empty @log.string
+  end
+
+  # A provider publishing test networks as its own space is a fact about
+  # that provider its users deserve to see — named, with the source id.
+  def test_each_clipped_range_is_reported_once_with_the_source_id
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n203.0.113.0/24,US,,,\n")
+    assert execute
+
+    lines = @log.string.lines.grep(/special-purpose/)
+    assert_equal 1, lines.length
+    assert_match(/tier B vultr publishes IANA special-purpose space 203\.0\.113\.0-203\.0\.113\.255/, lines[0])
+    assert_match(/clipped out of the overlay/, lines[0])
+  end
+
+  # A broken or hostile source could publish tens of thousands of bogons.
+  # One WARN each would be its own denial of service on the log pipeline, so
+  # the list is capped and the remainder is counted.
+  def test_the_warning_list_is_capped_and_the_rest_are_counted
+    cap = OpenASN::TierB::MAX_BOGON_WARNINGS
+    # 25 non-adjacent /32s inside multicast space, so they cannot merge into
+    # one range (the +1 adjacency rule in CidrUtils.merge would hide them).
+    rows = (0...(cap + 5)).map { |i| "224.0.#{i * 2}.1/32,US,,," }
+    rows << "104.238.128.0/24,US,,," # one genuine range so the source is not all-bogon
+    stub_request(:get, VULTR).to_return(status: 200, body: rows.join("\n") + "\n")
+    assert execute
+
+    listed = @log.string.lines.grep(/publishes IANA special-purpose space/)
+    assert_equal cap, listed.length
+    assert_match(/5 further ipv4 special-purpose ranges clipped \(not listed\)/, @log.string)
+    assert_equal 1, overlay_ranges(:ipv4).length
+  end
+
+  # Tier A is built by this project from sources it vetted; it is not a
+  # third party's claim about itself, and the filter must not touch it.
+  def test_tier_a_canonical_data_is_untouched
+    stub_request(:get, VULTR).to_return(status: 200, body: "104.238.128.0/24,US,,,\n")
+    assert execute
+    # 10.1.2.3 is RFC 1918 and IS a bogon, but the canonical special-range
+    # ladder still answers for it — the filter is Tier B only.
+    assert_equal :private, OpenASN.lookup("10.1.2.3").verdict
   end
 end
