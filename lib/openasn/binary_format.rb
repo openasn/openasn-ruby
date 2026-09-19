@@ -268,9 +268,40 @@ module OpenASN
     # --- OORG v1: ASN -> organization name ----------------------------------
 
     class OrgIndex
+      MAX_NAME_BYTES = 96
+
       def self.load(path)
         new(File.binread(path))
       end
+
+      # Local writer, used only for Tier B name tables (maps_to "as_org")
+      # the gem fetched itself. It writes the same OORG v1 bytes as the
+      # canonical sidecar, so one reader serves both. pairs: [[asn, name], ...]
+      # in any order; the last name wins for a duplicate ASN.
+      def self.pack(pairs)
+        names = {}
+        pairs.each { |asn, name| names[asn] = truncate_utf8(name.to_s.strip, MAX_NAME_BYTES) }
+        names.reject! { |_, n| n.empty? }
+        index = +"".b
+        blob = +"".b
+        names.keys.sort.each do |asn|
+          index << [asn, blob.bytesize].pack("NN")
+          blob << names[asn].b
+        end
+        out = ORG_MAGIC.b + [0x01, 0, 0].pack("CCn") + [names.size, blob.bytesize].pack("NN")
+        out << index << blob
+      end
+
+      def self.truncate_utf8(str, max_bytes)
+        str = str.dup.force_encoding(Encoding::UTF_8).scrub
+        return str if str.bytesize <= max_bytes
+
+        cut = str.byteslice(0, max_bytes)
+        cut = cut.byteslice(0, cut.bytesize - 1) until cut.valid_encoding?
+        cut
+      end
+
+      def size = @count
 
       def initialize(bytes)
         raise FormatError, "not an OORG file (bad magic)" unless bytes[0, 4] == ORG_MAGIC

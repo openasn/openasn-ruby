@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `org_names` Tier B feature (off by default): executes the data repo's new
+  `ipverse_org_names` recipe (`maps_to: "as_org"`, parser
+  `ipverse_as_csv_names`). It fetches ipverse's `as.csv` and fills
+  `Result#as_org` only where the canonical CC0 `openasn-orgs.bin` has no
+  name. Name tables are stored as `overlays/<id>-names.bin` in the OORG v1
+  layout and reported in `dataset_info[:tier_b_status]` with a `names`
+  count. The `min_records` breakage floor keeps stale data on a suspiciously
+  small parse.
+
+### Changed
+
+- `openasn-orgs.bin` now carries only CC0-sourced names (data repo
+  DECISIONS.md D-SRC-2), so `as_org` is nil for most ASNs unless
+  `org_names` is enabled. The byte format is unchanged (OORG v1), and no
+  code change is needed to read the new sidecar.
+
 ## [0.3.1] - 2026-07-07
 
 ### Fixed

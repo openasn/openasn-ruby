@@ -15,7 +15,7 @@ result.label            # => "Residential ISP" — human-readable, for admin UIs
 result.infrastructure?  # => false  (true only for :hosting / :vpn / :tor_exit)
 result.likely_human?    # => true   (:residential_isp, :mobile, :relay, :cgnat, :enterprise_gateway)
 result.asn              # => 3352
-result.as_org           # => "TELEFONICA DE ESPANA S.A.U."
+result.as_org           # => "Telefónica de España (Movistar)"
 result.sources          # => [:asn_category]  — every verdict is auditable
 ```
 
@@ -87,7 +87,7 @@ r.likely_human?   # :residential_isp | :mobile | :relay | :cgnat | :enterprise_g
 r.vpn? r.hosting? r.tor? r.relay? r.mobile? r.private? r.cgnat?
 
 r.asn             # 9009
-r.as_org          # "M247 Europe SRL"  (nil until the first data refresh downloads org names)
+r.as_org          # "Hetzner Online" (CC0 name; nil for ASNs without one — see "Organization names" below)
 r.category        # "hosting"          (raw upstream category)
 r.network_role    # "major_transit"    (raw upstream routing role)
 r.provider        # "aws" | "ProtonVPN" | "iCloud Private Relay" | nil (overlay attribution)
@@ -164,12 +164,24 @@ OpenASN.configure do |config|
   config.tier_b       = { apple_relay: true, tor: true, clouds: true,
                           vpn_providers: true, vpn_heavy: false,
                           vpn_dns: false, public_relays: false, zscaler: false,
-                          nazgul_mixed: false }
+                          nazgul_mixed: false, org_names: false }
   config.logger       = Rails.logger
 end
 ```
 
 `vpn_providers: true` enables small/stable exact-IP provider lists such as ProtonVPN, Mullvad, IVPN, Private Internet Access, AirVPN, Windscribe, PrivadoVPN, RiseupVPN, WLVPN, WorldVPN, OVPN, and Anonine. WLVPN is backend infrastructure powered by IPVanish and used by white-label resellers such as FastVPN/Namecheap/Spaceship; OpenASN labels the exact source as `provider: "WLVPN"` rather than guessing the reseller. WorldVPN, OVPN, and Anonine publish exact IPs in first-party server/status tables or JSON endpoints, so they do not need DNS expansion. `vpn_heavy: true` opts into large or historically fragile provider APIs such as NordVPN. `vpn_dns: true` opts into provider-published hostnames resolved by your server's DNS at update time, covering sources such as Surfshark, IPVanish, PrivateVPN, PureVPN, TorGuard, FastestVPN, VPNSecure, TunnelBear, StrongVPN, VyprVPN, Giganews VyprVPN, SlickVPN, AzireVPN, VPN.AC, and Trust.Zone; this is useful but intentionally off by default because DNS answers can vary by resolver/vantage. `public_relays: true` opts into volunteer/free relay networks such as VPN Gate, VPNBook, and FreeVPN.us, which can label residential-looking IPs as `:vpn` while they are actively advertised as relays. FreeVPN.us intentionally includes only OpenVPN/WireGuard/PPTP rows; SSH Tunnel and V2Ray rows are excluded from the VPN overlay.
+
+### Organization names (`as_org`)
+
+`as_org` comes from `openasn-orgs.bin`, the data project's CC0 name sidecar. Since 2026-09 it holds only names with a clean source: OpenASN's own curated, sourced names plus Wikidata (CC0). That is a few hundred ASNs, which together carry about two thirds of the world's eyeball traffic. Every other ASN has `as_org == nil`. The data project stopped publishing the ~125k RIR WHOIS names it used to ship, because the registries do not allow bulk republication (data repo [DECISIONS.md](https://github.com/openasn/openasn/blob/main/DECISIONS.md) D-SRC-2).
+
+To fill the rest on your own server, opt in to the `org_names` Tier B source:
+
+```ruby
+config.tier_b = config.tier_b.merge(org_names: true)
+```
+
+The gem then downloads ipverse's `as.csv` (~6MB, weekly, from ipverse's repository, never through OpenASN) and uses it only where the CC0 sidecar has no name. Those names are RIR WHOIS records. Your server fetches them for its own use, and you are responsible for that use under the registries' terms. Do not republish the table. Classification never depends on names.
 
 ### Updates
 

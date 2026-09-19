@@ -7,7 +7,9 @@ module OpenASN
   # On-disk store for Tier B overlays under {data_dir}/overlays/.
   #
   # Files: {source_id}-ipv4.bin / {source_id}-ipv6.bin — raw concatenated
-  # big-endian (start, end) pairs, sorted and merged. No header: these are
+  # big-endian (start, end) pairs, sorted and merged. Name-table sources
+  # (maps_to "as_org") write {source_id}-names.bin instead, in the OORG v1
+  # layout of the canonical openasn-orgs.bin. No header on range files: these are
   # internal files owned by this gem, versioned by the `schema` field in
   # state.json, and always written atomically (tmp + rename) so a reader
   # process can never observe a torn file.
@@ -59,6 +61,41 @@ module OpenASN
       end
     end
 
+    # Tier B name tables (maps_to "as_org"): one OORG v1 file per source,
+    # {source_id}-names.bin, written atomically. pairs: [[asn, name], ...]
+    def write_names(id, provider: nil, etag: nil, pairs:)
+      FileUtils.mkdir_p(@dir)
+      bytes = BinaryFormat::OrgIndex.pack(pairs)
+      path = names_path(id)
+      File.binwrite("#{path}.tmp", bytes)
+      File.rename("#{path}.tmp", path)
+      update_state(id) do |entry|
+        entry.merge(
+          "maps_to" => "as_org", "provider" => provider, "etag" => etag,
+          "fetched_at" => Time.now.utc.iso8601,
+          "records_names" => bytes[8, 4].unpack1("N"),
+          "last_error" => nil
+        )
+      end
+    end
+
+    # First usable name table among enabled_ids (in the order given), or nil.
+    # A torn or corrupt file is skipped, never raised: names are optional
+    # richness and must not take a lookup down.
+    def load_names(enabled_ids)
+      enabled_ids.each do |id|
+        path = names_path(id)
+        next unless File.exist?(path)
+
+        begin
+          return BinaryFormat::OrgIndex.load(path)
+        rescue FormatError
+          next
+        end
+      end
+      nil
+    end
+
     def record_failure(id, error_message)
       update_state(id) do |entry|
         entry.merge("last_error" => error_message, "last_attempt_at" => Time.now.utc.iso8601)
@@ -96,11 +133,13 @@ module OpenASN
 
     def clear!(id)
       %i[ipv4 ipv6].each { |f| FileUtils.rm_f(file_path(id, f)) }
+      FileUtils.rm_f(names_path(id))
     end
 
     private
 
     def file_path(id, family) = File.join(@dir, "#{id}-#{family}.bin")
+    def names_path(id) = File.join(@dir, "#{id}-names.bin")
 
     def load_family(id, family, mode)
       path = file_path(id, family)

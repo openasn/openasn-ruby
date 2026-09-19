@@ -57,7 +57,11 @@ module OpenASN
           next
         end
 
-        changed |= refresh_source(source, force: force)
+        changed |= if source["maps_to"] == "as_org"
+                     refresh_names_source(source, force: force)
+                   else
+                     refresh_source(source, force: force)
+                   end
       end
       changed
     end
@@ -126,6 +130,46 @@ module OpenASN
       true
     rescue StandardError => e
       # keep_stale: failure is recorded, previous overlay files stay live.
+      @store.record_failure(id, "#{e.class}: #{e.message}")
+      @logger.warn("openasn: tier B #{id} failed (#{e.message}); keeping stale data")
+      false
+    end
+
+    # maps_to "as_org": an ASN -> organization-name table, not IP ranges
+    # (fetch-manifest `ipverse_org_names`). It fills Result#as_org only
+    # where the canonical openasn-orgs.bin has no name (Snapshot#org_name).
+    # Same prime directives as the range path: cadence, ETag, keep-stale,
+    # never raise. `min_records` in the manifest is the breakage floor: a
+    # 124k-row table that suddenly parses to 300 rows is a broken upstream,
+    # not a smaller world.
+    def refresh_names_source(source, force:)
+      id = source["id"]
+      return false unless force || due?(id, source["cadence_hours"])
+
+      url = source["url"]
+      if url.to_s.empty?
+        @store.record_failure(id, "name table source has no url")
+        return false
+      end
+
+      etag = force ? nil : @store.source_state(id)["etag"]
+      response = fetch_source_url(source, url, etag)
+      if response == :not_modified
+        @store.record_fresh(id)
+        return false
+      end
+
+      pairs = Parsers.parse(source["parser"], response.body)
+      floor = [source["min_records"].to_i, 1].max
+      if pairs.length < floor
+        @store.record_failure(id, "parsed #{pairs.length} names (< min_records #{floor}) — upstream format changed? keeping stale data")
+        return false
+      end
+
+      @store.write_names(id, provider: source["provider"], etag: response.etag, pairs: pairs)
+      @logger.info("openasn: tier B #{id}: #{pairs.length} organization names")
+      true
+    rescue StandardError => e
       @store.record_failure(id, "#{e.class}: #{e.message}")
       @logger.warn("openasn: tier B #{id} failed (#{e.message}); keeping stale data")
       false

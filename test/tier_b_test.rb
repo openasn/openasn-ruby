@@ -488,3 +488,73 @@ class TierBExecutorTest < Minitest::Test
     OpenASN::TierB.dns_resolver = old_resolver
   end
 end
+
+# maps_to "as_org" name tables (data repo DECISIONS.md D-SRC-2): the WHOIS
+# org names left the CC0 sidecar and come back only on opt-in, as a fallback.
+class OrgNamesTierBTest < Minitest::Test
+  CSV_URL = "https://raw.githubusercontent.com/ipverse/as-metadata/master/as.csv"
+  BODY = "asn,handle,description,country-code\n" \
+         "64500,RECIPE-500,Recipe Name For 64500,ES\n" \
+         "64502,BIZ,\"Fixture Business, Inc.\",US\n" \
+         "64503,UNI,\"The \"\"Quoted\"\" University\",US\n".freeze
+
+  def setup
+    super
+    FixtureData.install_canonical(@test_data_dir)
+    configure { |c| c.tier_b = { apple_relay: false, tor: false, clouds: false, vpn_providers: false, org_names: true } }
+    File.write(File.join(@test_data_dir, "fetch-manifest.json"), JSON.generate({
+      schema_version: 1,
+      sources: [{ id: "ipverse_org_names", url: CSV_URL, parser: "ipverse_as_csv_names", maps_to: "as_org",
+                  provider: "ipverse as-metadata", cadence_hours: 168, min_records: 2 }]
+    }))
+  end
+
+  def execute(force: true)
+    http = OpenASN::HttpClient.new(user_agent: OpenASN.configuration.user_agent, logger: OpenASN.configuration.logger)
+    OpenASN::TierB.new(OpenASN.configuration, http).execute(force: force)
+  end
+
+  def test_parser_handles_rfc4180_quoting
+    pairs = OpenASN::Parsers.parse("ipverse_as_csv_names", BODY)
+    assert_equal [[64_500, "Recipe Name For 64500"], [64_502, "Fixture Business, Inc."],
+                  [64_503, "The \"Quoted\" University"]], pairs
+  end
+
+  def test_parser_rejects_a_changed_schema
+    assert_raises(OpenASN::Parsers::ParseError) { OpenASN::Parsers.parse("ipverse_as_csv_names", "a,b,c\n1,2,3\n") }
+  end
+
+  def test_fills_missing_names_and_never_overrides_the_canonical_sidecar
+    stub_request(:get, CSV_URL).to_return(status: 200, body: BODY)
+    assert execute
+    assert_equal "Fixture Business, Inc.", OpenASN.lookup("1.0.2.10").as_org   # AS64502: no canonical name
+    assert_equal "Fixture Residential ISP", OpenASN.lookup("1.0.0.10").as_org  # AS64500: canonical wins
+    status = OpenASN.dataset_info[:tier_b_status][:ipverse_org_names]
+    assert_equal({ names: 3 }, status[:records])
+    assert_equal "as_org", status[:maps_to]
+  end
+
+  def test_a_suspiciously_small_table_keeps_stale_names
+    stub_request(:get, CSV_URL).to_return(status: 200, body: BODY)
+    assert execute
+    stub_request(:get, CSV_URL).to_return(status: 200, body: "asn,handle,description,country-code\n64502,X,Only one,US\n")
+    refute execute
+    assert_equal "Fixture Business, Inc.", OpenASN.lookup("1.0.2.10").as_org
+    assert_match(/min_records/, OpenASN::OverlayStore.new(@test_data_dir).source_state("ipverse_org_names")["last_error"])
+  end
+
+  def test_off_by_default
+    configure { |c| c.tier_b = OpenASN::Configuration::TIER_B_DEFAULTS.dup }
+    refute OpenASN.configuration.enabled_tier_b_source_ids.include?("ipverse_org_names")
+    refute execute
+    assert_nil OpenASN.lookup("1.0.2.10").as_org
+  end
+
+  def test_pack_round_trips_through_the_reader
+    idx = OpenASN::BinaryFormat::OrgIndex.new(OpenASN::BinaryFormat::OrgIndex.pack([[2, "b"], [1, "a" * 200], [3, " "]]))
+    assert_equal 2, idx.size
+    assert_equal 96, idx.name(1).bytesize
+    assert_equal "b", idx.name(2)
+    assert_nil idx.name(3)
+  end
+end

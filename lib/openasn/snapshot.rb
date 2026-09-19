@@ -49,8 +49,9 @@ module OpenASN
       orgs = load_orgs(data_dir, config)
       store = OverlayStore.new(data_dir)
       overlays = store.load(config.enabled_tier_b_source_ids, mode)
+      recipe_orgs = store.load_names(config.enabled_tier_b_source_ids)
 
-      new(v4_parsed, v6_parsed, orgs, overlays, manifest, origin, store)
+      new(v4_parsed, v6_parsed, orgs, overlays, manifest, origin, store, recipe_orgs: recipe_orgs)
     end
 
     def self.parse_pair(v4_bytes, v6_bytes, mode)
@@ -103,10 +104,11 @@ module OpenASN
       nil
     end
 
-    def initialize(v4_parsed, v6_parsed, orgs, overlays, manifest, origin, store)
+    def initialize(v4_parsed, v6_parsed, orgs, overlays, manifest, origin, store, recipe_orgs: nil)
       @v4 = Family.new(base: v4_parsed[:base], vpn: v4_parsed[:vpn], dc: v4_parsed[:dc], relay: v4_parsed[:relay])
       @v6 = Family.new(base: v6_parsed[:base], vpn: v6_parsed[:vpn], dc: v6_parsed[:dc], relay: v6_parsed[:relay])
       @orgs = orgs
+      @recipe_orgs = recipe_orgs
       @overlays = overlays.freeze
       @build_id = manifest["build_id"]
       @build_ts = v4_parsed[:build_ts]
@@ -146,8 +148,15 @@ module OpenASN
       @overlay_index.fetch([fam, maps_to], EMPTY_OVERLAYS)
     end
 
+    # Canonical CC0 name first (openasn-orgs.bin), then an opted-in Tier B
+    # name table (fetch-manifest maps_to "as_org", e.g. ipverse_org_names).
+    # Since 2026-09 the canonical sidecar names only ASNs with a clean
+    # source (data repo DECISIONS.md D-SRC-2), so without the recipe most
+    # ASNs have no name and as_org is nil.
     def org_name(asn)
-      asn && @orgs ? @orgs.name(asn) : nil
+      return nil unless asn
+
+      @orgs&.name(asn) || @recipe_orgs&.name(asn)
     end
 
     def age_seconds
@@ -158,14 +167,22 @@ module OpenASN
 
     def build_tier_b_status(store)
       state = store.state["sources"]
-      @overlays.to_h do |o|
+      status = @overlays.to_h do |o|
         s = state[o.id] || {}
         [o.id.to_sym, {
           maps_to: o.maps_to, fetched_at: s["fetched_at"],
           records: { ipv4: s["records_ipv4"], ipv6: s["records_ipv6"] },
           last_error: s["last_error"]
         }]
-      end.freeze
+      end
+      # Name tables have no ranges, so they are not overlays; report them too.
+      state.each do |id, s|
+        next unless s["maps_to"] == "as_org" && !status.key?(id.to_sym)
+
+        status[id.to_sym] = { maps_to: "as_org", fetched_at: s["fetched_at"],
+                              records: { names: s["records_names"] }, last_error: s["last_error"] }
+      end
+      status.freeze
     end
   end
 end
