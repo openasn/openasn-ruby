@@ -143,6 +143,25 @@ without growing the verdict enum.
   to an older manifest). `/vpn-locations/` 404s and `/locations` is now
   marketing copy with zero server hostnames — the list is gone, not moved.
 
+### Security
+
+- `OpenASN::HttpClient` now refuses to follow a redirect whose target is not
+  `http`/`https`, at every hop, and refuses a non-http(s) URL from its caller.
+  Tier B sources and the release host are remote parties this gem does not
+  control; before this change the only thing standing between a hostile
+  `Location: file:///…` and a local-file read was `Net::HTTP` rejecting the
+  URI itself — an implementation detail, and one that surfaced as a bare
+  `ArgumentError` outside the documented `OpenASN::UpdateError` contract.
+  Cross-host http(s) redirects (GitHub release downloads) are unaffected.
+
+### Fixed
+
+- Redirect `Location` resolution now always goes through `URI.join`, so a
+  *relative* target that happens to start with `http` (e.g. `httpdocs/x.txt`)
+  resolves against the request URL instead of being treated as absolute.
+- An `https` → `http` redirect is still followed (some sources need it) but is
+  now logged as a transport downgrade.
+
 ## [0.3.1] - 2026-07-07
 
 ### Fixed
