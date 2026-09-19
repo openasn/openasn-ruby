@@ -63,6 +63,67 @@ module OpenASN
       end
     end
 
+    # --- ASN -> organization-name tables (maps_to "as_org") -------------------
+    #
+    # DIFFERENT CONTRACT: these return [[asn Integer, name String], ...], not
+    # IP tokens. The executor routes every `maps_to: "as_org"` source to
+    # TierB#refresh_names_source instead of the range path.
+
+    # ipverse as-metadata as.csv: "asn,handle,description,country-code", with
+    # RFC 4180 quoting ("ATOS IT Solutions and Services, Inc."). The
+    # description is the RIR WHOIS `descr`. OpenASN no longer publishes it
+    # (data repo DECISIONS.md D-SRC-2), so this runs on the user's server only.
+    register "ipverse_as_csv_names" do |body|
+      body = body.dup.force_encoding(Encoding::UTF_8).scrub
+      lines = body.each_line
+      header = Parsers.csv_fields(lines.next.to_s.strip)
+      unless header[0] == "asn" && header[2] == "description"
+        raise ParseError, "ipverse_as_csv_names: unexpected header #{header.inspect} — schema changed?"
+      end
+
+      lines.filter_map do |line|
+        asn, _handle, name = Parsers.csv_fields(line.chomp)
+        asn = Integer(asn.to_s, 10, exception: false)
+        name = name.to_s.strip
+        [asn, name] if asn&.positive? && !name.empty?
+      end
+    rescue StopIteration
+      raise ParseError, "ipverse_as_csv_names: empty body"
+    end
+
+    # Minimal RFC 4180 field splitter (no stdlib `csv`: it is a bundled gem
+    # from Ruby 3.4 and this gem has zero runtime dependencies).
+    def self.csv_fields(line)
+      return line.split(",", -1) unless line.include?("\"")
+
+      fields = []
+      field = +""
+      quoted = false
+      i = 0
+      while i < line.length
+        c = line[i]
+        if quoted
+          if c == '"' && line[i + 1] == '"'
+            field << '"'
+            i += 1
+          elsif c == '"'
+            quoted = false
+          else
+            field << c
+          end
+        elsif c == '"'
+          quoted = true
+        elsif c == ","
+          fields << field
+          field = +""
+        else
+          field << c
+        end
+        i += 1
+      end
+      fields << field
+    end
+
     # RFC 8805 geofeeds: "prefix,country,region,city,zip" with '#' comments.
     register "geofeed_csv" do |body|
       body.each_line.filter_map do |line|

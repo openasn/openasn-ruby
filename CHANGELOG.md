@@ -7,6 +7,15 @@ without growing the verdict enum.
 
 ### Added
 
+- `org_names` Tier B feature (on by default, like the other light sources): executes the data repo's new
+  `ipverse_org_names` recipe (`maps_to: "as_org"`, parser
+  `ipverse_as_csv_names`). It fetches ipverse's `as.csv` and fills
+  `Result#as_org` only where the canonical CC0 `openasn-orgs.bin` has no
+  name. Name tables are stored as `overlays/<id>-names.bin` in the OORG v1
+  layout and reported in `dataset_info[:tier_b_status]` with a `names`
+  count. The `min_records` breakage floor keeps stale data on a suspiciously
+  small parse.
+
 - **Verified crawler / fetcher attribution.** A `fetch-manifest.json` source
   may declare an optional `role`, and `Result` gains `#crawler` (the operator
   id, e.g. `"googlebot"`, `"chatgpt-user"`), `#crawler_role`,
@@ -121,6 +130,11 @@ without growing the verdict enum.
 
 ### Changed
 
+- `openasn-orgs.bin` now carries only CC0-sourced names (data repo
+  DECISIONS.md D-SRC-2). With `org_names` on (the default) the gem fills the
+  rest from the locally fetched recipe; with it off, `as_org` is nil for most
+  ASNs. The byte format is unchanged (OORG v1), and no
+  code change is needed to read the new sidecar.
 - `Result#to_h` gains `crawler`, `verified_crawler`, `crawler_role` and
   `verified_fetcher`, appended at the END (the to_h append-only contract).
 - `slickvpn_locations` parser rewritten for SlickVPN's site redesign: server

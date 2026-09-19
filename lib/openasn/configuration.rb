@@ -67,6 +67,11 @@ module OpenASN
     #                    Secure Access. Zscaler keeps its own switch for
     #                    backwards compatibility - config keys are append-only.)
     #   nazgul_mixed   → nazgul_mixed               (flag only, never :vpn)
+    #   org_names      → ipverse_org_names          (Result#as_org fallback: RIR WHOIS
+    #                    org names for ASNs the CC0 openasn-orgs.bin does not
+    #                    name. ~6MB weekly. On by default; the table is
+    #                    registry data under RIR terms, fetched for your own
+    #                    use only; data repo DECISIONS.md D-SRC-2)
     attr_accessor :tier_b
 
     # Pin data to a dated release tag (e.g. "v2026.07.05") instead of the
@@ -103,7 +108,8 @@ module OpenASN
       vpn_heavy: false,     # e.g. NordVPN's ~35MB API response; opt in deliberately
       vpn_dns: false,       # provider-published hostnames resolved by local DNS; opt in deliberately
       public_relays: false, # volunteer relays like VPN Gate; useful, but high-churn
-      nazgul_mixed: false   # semantics broader than VPN; opt-in only
+      nazgul_mixed: false,  # semantics broader than VPN; opt-in only
+      org_names: true       # WHOIS-derived as_org fallback, fetched locally (D-SRC-2, CD-11a)
     }.freeze
 
     # Feature switch → fetch-manifest source ids.
@@ -132,7 +138,8 @@ module OpenASN
                   vyprvpn_openvpn giganews_vyprvpn_hosts slickvpn_locations azirevpn_locations
                   vpnac_status trustzone_servers cryptostorm_configs],
       public_relays: %w[vpngate vpnbook_openvpn freevpn_us_servers],
-      nazgul_mixed: %w[nazgul_mixed]
+      nazgul_mixed: %w[nazgul_mixed],
+      org_names: %w[ipverse_org_names]
     }.freeze
 
     def initialize
