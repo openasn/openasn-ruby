@@ -181,6 +181,8 @@ OpenASN.eager_load!    # load at boot instead of first lookup (~50–200ms once 
 
 Updates are atomic end to end: SHA-256 verified against the release manifest → written to temp files → `rename(2)` into place → in-memory snapshot swapped in a single assignment. Concurrent lookups never block and never see partial state; concurrent updaters (multi-worker Puma) coordinate via file lock; sibling processes pick up new data within ~5 minutes via a one-`stat()` freshness probe. Every Tier B source failure keeps last-good data and surfaces in `dataset_info` — a broken upstream can never crash your app or silently blank a signal.
 
+Outbound fetches only ever speak **http/https**: the release host and every Tier B source is a remote party this gem does not control, so a `Location:` pointing at `file://`, `ftp://`, `data:` (or anything else) is refused at every redirect hop instead of followed. Cross-host redirects to http(s) are still followed — GitHub release downloads require it.
+
 ### Rack middleware (optional)
 
 ```ruby
