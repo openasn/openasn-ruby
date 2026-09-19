@@ -55,11 +55,12 @@ module OpenASN
     }.freeze
 
     attr_reader :ip, :verdict, :asn, :as_org, :category, :network_role,
-                :provider, :sources, :flags, :context_flags, :flag_names
+                :provider, :sources, :flags, :context_flags, :flag_names,
+                :crawler, :crawler_role
 
     def initialize(ip:, verdict:, asn: nil, as_org: nil, category: nil,
                    network_role: nil, provider: nil, sources: [], flags: 0,
-                   context_flags: [], unrouted: false)
+                   context_flags: [], crawler: nil, crawler_role: nil, unrouted: false)
       @ip = ip
       @verdict = verdict
       @asn = asn
@@ -73,6 +74,8 @@ module OpenASN
       # nobody downstream needs BinaryFormat bit knowledge.
       @flag_names = BinaryFormat.flag_names(flags).freeze
       @context_flags = context_flags.freeze
+      @crawler = crawler
+      @crawler_role = crawler_role
       @unrouted = unrouted
       freeze
     end
@@ -104,6 +107,27 @@ module OpenASN
     # True when no ASN announces this IP (unallocated/unrouted space).
     def unrouted? = @unrouted
 
+    # True when a first-party operator recognition list claims this IP for an
+    # AUTONOMOUS crawler (Googlebot, GPTBot, ClaudeBot, Applebot). `crawler`
+    # names the operator; `crawler_role` says which kind.
+    #
+    # Deliberately FALSE for user-triggered fetchers — see #verified_fetcher?.
+    # Use `!result.crawler.nil?` when you only want "some operator list
+    # claims this IP", regardless of kind.
+    #
+    # NOTE: only as strong as the list being fetched. This is an allowlist
+    # signal, never proof of identity for an unauthenticated request —
+    # cryptographic proof is Web Bot Auth's job, not an IP list's.
+    def verified_crawler? = @crawler_role == :verified_crawler
+
+    # True when the operator publishes this IP as a USER-TRIGGERED fetcher
+    # (ChatGPT-User, Perplexity-User, Google's user-triggered fetchers): a
+    # person asked for the page and is waiting. These agents deliberately do
+    # not follow all robots.txt directives, so treating them as ordinary
+    # crawler automation and throttling them throttles a human. Kept separate
+    # from #verified_crawler? for exactly that reason.
+    def verified_fetcher? = @crawler_role == :verified_fetcher
+
     # Everything, for logging and shadow mode. Stable keys — CarHey-style
     # shadow analyses depend on this shape staying append-only.
     # (flag_names added in 0.3.0: the raw bitfield is useless in a log line.)
@@ -122,7 +146,12 @@ module OpenASN
         flags: flags,
         flag_names: flag_names,
         context_flags: context_flags,
-        unrouted: unrouted?
+        unrouted: unrouted?,
+        # Appended 2026-09 (to_h keys are append-only — new keys go at the END).
+        crawler: crawler,
+        verified_crawler: verified_crawler?,
+        crawler_role: crawler_role,
+        verified_fetcher: verified_fetcher?
       }
     end
 

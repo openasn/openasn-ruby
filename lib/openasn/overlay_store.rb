@@ -20,7 +20,13 @@ module OpenASN
   class OverlayStore
     SCHEMA = 1
 
-    Entry = Struct.new(:id, :maps_to, :provider, :v4, :v6, keyword_init: true)
+    # `role` (added 2026-09: "verified_crawler") is an OPTIONAL, additive
+    # descriptor a fetch-manifest source may carry alongside maps_to. It
+    # never decides a verdict; it lets the classifier attribute a hit
+    # ("this hosting IP is Googlebot") without growing the verdict enum.
+    # Absent in state.json written by older gems -> nil, which every reader
+    # treats as "no role".
+    Entry = Struct.new(:id, :maps_to, :provider, :role, :v4, :v6, keyword_init: true)
 
     def initialize(data_dir)
       @dir = File.join(data_dir, "overlays")
@@ -40,7 +46,7 @@ module OpenASN
     def source_state(id) = state.dig("sources", id) || {}
 
     # ranges_by_family: { ipv4: [[s,e],...] (sorted, merged), ipv6: [...] }
-    def write(id, maps_to:, provider: nil, etag: nil, ranges_by_family:)
+    def write(id, maps_to:, provider: nil, role: nil, etag: nil, ranges_by_family:)
       FileUtils.mkdir_p(@dir)
       counts = {}
       %i[ipv4 ipv6].each do |family|
@@ -53,7 +59,7 @@ module OpenASN
       end
       update_state(id) do |entry|
         entry.merge(
-          "maps_to" => maps_to.to_s, "provider" => provider, "etag" => etag,
+          "maps_to" => maps_to.to_s, "provider" => provider, "role" => role, "etag" => etag,
           "fetched_at" => Time.now.utc.iso8601,
           "records_ipv4" => counts[:ipv4], "records_ipv6" => counts[:ipv6],
           "last_error" => nil
@@ -127,7 +133,7 @@ module OpenASN
         next unless v4 || v6
 
         Entry.new(id: id, maps_to: meta["maps_to"], provider: meta["provider"],
-                  v4: v4, v6: v6)
+                  role: meta["role"], v4: v4, v6: v6)
       end
     end
 

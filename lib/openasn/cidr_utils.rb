@@ -36,6 +36,42 @@ module OpenASN
       merged
     end
 
+    # [start, finish] minus a SORTED, MERGED list of blocked ranges, as the
+    # surviving pieces in ascending order (possibly none).
+    #
+    # CLIP, NOT DROP. A range that merely overlaps a blocked range keeps its
+    # legitimate remainder: 192.0.0.0/22 minus the bogon table keeps
+    # 192.0.1.0/24 and 192.0.3.0/24 and loses only the protocol-assignment
+    # and TEST-NET-1 /24s. A filter that deleted a whole announcement because
+    # it touched one blocked prefix would be worse than the bug it fixes.
+    #
+    # `blocked` MUST be sorted and merged (BOGON_RANGES is built that way) —
+    # the early `break` relies on it.
+    #
+    # The Python client keeps the identical algorithm in tier_b.py's
+    # `_subtract`; it lives here in Ruby because this is where range math
+    # already lives.
+    def subtract(start, finish, blocked)
+      pieces = [[start, finish]]
+      blocked.each do |(b_start, b_end)|
+        break if b_start > finish # sorted: nothing further can overlap
+        next if b_end < start
+
+        remaining = []
+        pieces.each do |(p_start, p_end)|
+          if b_end < p_start || b_start > p_end
+            remaining << [p_start, p_end]
+            next
+          end
+          remaining << [p_start, b_start - 1] if p_start < b_start
+          remaining << [b_end + 1, p_end] if p_end > b_end
+        end
+        pieces = remaining
+        break if pieces.empty?
+      end
+      pieces
+    end
+
     # tokens (CIDRs/IPs, junk tolerated) -> { ipv4: merged, ipv6: merged }
     def ranges_by_family(tokens)
       out = { ipv4: [], ipv6: [] }
