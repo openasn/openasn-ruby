@@ -32,7 +32,7 @@ OpenASN.configure do |config|
   #   public_relays: false,  # volunteer/free public VPN relays (VPN Gate/VPNBook/FreeVPN.us) — opt-in
   #   zscaler: false,        # extra :enterprise_gateway ranges (ASN flags already cover most)
   #   nazgul_mixed: false,   # broad "high-risk hosting" flag — NOT a VPN signal; opt-in
-  #   org_names: false       # as_org fallback from RIR WHOIS names (ipverse as.csv, ~6MB weekly) — opt-in, for your own use only
+  #   org_names: true        # as_org fallback from RIR WHOIS names (ipverse as.csv, ~6MB weekly), for your own use only
   # }
 
   # config.logger = Rails.logger

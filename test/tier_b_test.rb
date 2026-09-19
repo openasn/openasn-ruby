@@ -543,8 +543,14 @@ class OrgNamesTierBTest < Minitest::Test
     assert_match(/min_records/, OpenASN::OverlayStore.new(@test_data_dir).source_state("ipverse_org_names")["last_error"])
   end
 
-  def test_off_by_default
+  def test_on_by_default
+    assert OpenASN::Configuration::TIER_B_DEFAULTS[:org_names]
     configure { |c| c.tier_b = OpenASN::Configuration::TIER_B_DEFAULTS.dup }
+    assert OpenASN.configuration.enabled_tier_b_source_ids.include?("ipverse_org_names")
+  end
+
+  def test_disabled_leaves_uncurated_asns_unnamed
+    configure { |c| c.tier_b = OpenASN::Configuration::TIER_B_DEFAULTS.merge(org_names: false) }
     refute OpenASN.configuration.enabled_tier_b_source_ids.include?("ipverse_org_names")
     refute execute
     assert_nil OpenASN.lookup("1.0.2.10").as_org

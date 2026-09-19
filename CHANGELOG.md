@@ -4,7 +4,7 @@
 
 ### Added
 
-- `org_names` Tier B feature (off by default): executes the data repo's new
+- `org_names` Tier B feature (on by default, like the other light sources): executes the data repo's new
   `ipverse_org_names` recipe (`maps_to: "as_org"`, parser
   `ipverse_as_csv_names`). It fetches ipverse's `as.csv` and fills
   `Result#as_org` only where the canonical CC0 `openasn-orgs.bin` has no
@@ -16,8 +16,9 @@
 ### Changed
 
 - `openasn-orgs.bin` now carries only CC0-sourced names (data repo
-  DECISIONS.md D-SRC-2), so `as_org` is nil for most ASNs unless
-  `org_names` is enabled. The byte format is unchanged (OORG v1), and no
+  DECISIONS.md D-SRC-2). With `org_names` on (the default) the gem fills the
+  rest from the locally fetched recipe; with it off, `as_org` is nil for most
+  ASNs. The byte format is unchanged (OORG v1), and no
   code change is needed to read the new sidecar.
 
 ## [0.3.1] - 2026-07-07

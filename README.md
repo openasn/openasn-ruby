@@ -164,7 +164,7 @@ OpenASN.configure do |config|
   config.tier_b       = { apple_relay: true, tor: true, clouds: true,
                           vpn_providers: true, vpn_heavy: false,
                           vpn_dns: false, public_relays: false, zscaler: false,
-                          nazgul_mixed: false, org_names: false }
+                          nazgul_mixed: false, org_names: true }
   config.logger       = Rails.logger
 end
 ```
@@ -173,15 +173,15 @@ end
 
 ### Organization names (`as_org`)
 
-`as_org` comes from `openasn-orgs.bin`, the data project's CC0 name sidecar. Since 2026-09 it holds only names with a clean source: OpenASN's own curated, sourced names plus Wikidata (CC0). That is a few hundred ASNs, which together carry about two thirds of the world's eyeball traffic. Every other ASN has `as_org == nil`. The data project stopped publishing the ~125k RIR WHOIS names it used to ship, because the registries do not allow bulk republication (data repo [DECISIONS.md](https://github.com/openasn/openasn/blob/main/DECISIONS.md) D-SRC-2).
+`as_org` comes from `openasn-orgs.bin`, the data project's CC0 name sidecar. Since 2026-09 it holds only names with a clean source: OpenASN's own curated, sourced names plus Wikidata (CC0). That is a few hundred ASNs, which together carry about two thirds of the world's eyeball traffic. Every other ASN has no canonical name. The data project stopped publishing the ~125k RIR WHOIS names it used to ship, because the registries do not allow bulk republication (data repo [DECISIONS.md](https://github.com/openasn/openasn/blob/main/DECISIONS.md) D-SRC-2).
 
-To fill the rest on your own server, opt in to the `org_names` Tier B source:
+The `org_names` Tier B source (on by default) fills the rest on your own server. The gem downloads ipverse's `as.csv` (~6MB, weekly, from ipverse's repository, never through OpenASN) and uses it only where the CC0 sidecar has no name. Those names are RIR WHOIS records. Your server fetches them for its own use, and you are responsible for that use under the registries' terms. Do not republish the table. Classification never depends on names. To keep only the CC0 names, turn it off:
 
 ```ruby
-config.tier_b = config.tier_b.merge(org_names: true)
+config.tier_b = config.tier_b.merge(org_names: false)
 ```
 
-The gem then downloads ipverse's `as.csv` (~6MB, weekly, from ipverse's repository, never through OpenASN) and uses it only where the CC0 sidecar has no name. Those names are RIR WHOIS records. Your server fetches them for its own use, and you are responsible for that use under the registries' terms. Do not republish the table. Classification never depends on names.
+With it off, `as_org` is nil for every ASN the CC0 sidecar does not name.
 
 ### Updates
 
