@@ -162,8 +162,10 @@ OpenASN.configure do |config|
   config.release_url  = "https://github.com/openasn/openasn/releases/download/latest/" # self-hostable; tag-addressed on purpose (badge-immune, see data repo DECISIONS.md D-REL-1)
   config.pin_version  = nil       # e.g. "v2026.07.05" to pin a dated data release
   config.tier_b       = { apple_relay: true, tor: true, clouds: true,
-                          vpn_providers: true, vpn_heavy: false,
-                          vpn_dns: false, public_relays: false, zscaler: false,
+                          clouds_extra: false, verified_crawlers: true,
+                          verified_crawlers_extra: false, zscaler: false,
+                          swg_egress: false, vpn_providers: true, vpn_heavy: false,
+                          vpn_dns: false, public_relays: false,
                           nazgul_mixed: false, org_names: true }
   config.logger       = Rails.logger
 end
