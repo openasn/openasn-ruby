@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- Bundled `fetch-manifest.json` seed re-synced with the dataset's 2026-10-02 Tier B health check: `scaleway_ranges` now points at Scaleway's moved network-information page (`/docs/account/support/scaleway-network-information.md`; the old `/reference-content/` path 404s). The parser is unchanged, and the new page parses to the same 13 tokens (11 v4 + 1 v6). `torguard_openvpn_tcp`/`_udp` notes record that TorGuard now answers 403 with a Cloudflare managed challenge; the recipes stay opt-in and keep-stale, and nothing works around the challenge.
+
 ## [0.4.0] - 2026-10-02
 
 The agent-web release: OpenASN can now answer "this hosting IP is Googlebot"
