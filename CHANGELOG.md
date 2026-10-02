@@ -1,9 +1,26 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0] - 2026-10-02
 
 The agent-web release: OpenASN can now answer "this hosting IP is Googlebot"
-without growing the verdict enum.
+without growing the verdict enum. It also carries a **security hardening fix
+for the HTTP client** (see Security below); everyone on 0.3.1 or earlier
+should upgrade.
+
+### Upgrading
+
+- Two new Tier B groups are **on by default**, so after upgrading the update
+  job makes new outbound requests: `verified_crawlers` (16 small first-party
+  lists from developers.google.com, openai.com, claude.com,
+  search.developer.apple.com, index.commoncrawl.org, duckduckgo.com,
+  www.perplexity.ai and mistral.ai) and `org_names` (ipverse's `as.csv`,
+  ~6MB, weekly, from raw.githubusercontent.com). If your
+  egress is allowlisted, either add those hosts or switch the groups off
+  (`config.tier_b = config.tier_b.merge(verified_crawlers: false, org_names: false)`).
+  Every failure keeps last-good data as before; nothing breaks if they are
+  blocked.
+- No config key was renamed or removed, `Result::VERDICTS` is unchanged, and
+  `Result#to_h` only gained keys at the end.
 
 ### Added
 
@@ -39,19 +56,25 @@ without growing the verdict enum.
   cloud.json. If attribution came from the ladder, the cloud overlays would
   silently swallow the entire agent web.
 
-- **20 verified crawler / fetcher sources**, on by default where the list is
-  small, official and unambiguous: Googlebot, Google special-case crawlers,
-  Google user-triggered fetchers and Google-Agent, OpenAI GPTBot /
-  ChatGPT-User / OAI-SearchBot / OAI-AdsBot, Anthropic's combined
-  ClaudeBot feed, Applebot, Common Crawl CCBot, DuckDuckBot, PerplexityBot
-  and Perplexity-User. Opt-in `verified_crawlers_extra` carries Bingbot,
-  Google's coarse `goog.json`, shared App Engine egress, and Amazon's three
-  HTML-wrapped lists.
+- **23 verified crawler / fetcher sources**, on by default where the list is
+  small, official and unambiguous (16 in `verified_crawlers`): Googlebot,
+  Google special-case crawlers, Google user-triggered fetchers and
+  Google-Agent, OpenAI GPTBot / ChatGPT-User / OAI-SearchBot / OAI-AdsBot,
+  Anthropic's combined ClaudeBot feed, Applebot, Common Crawl CCBot,
+  DuckDuckBot, PerplexityBot and Perplexity-User, and Mistral AI's
+  MistralAI-Index (crawler) and MistralAI-User (fetcher). Opt-in
+  `verified_crawlers_extra` (7) carries Bingbot, Google's coarse
+  `goog.json`, shared App Engine egress, Amazon's three HTML-wrapped lists,
+  and AhrefsBot.
 
-- **Three cloud/platform sources**: `github_meta` (2101 v4 + 648 v6 — GitHub
+- **Cloud/platform sources**: `github_meta` (2101 v4 + 648 v6 — GitHub
   Actions egress is the best available answer to "is this a CI runner?"),
-  `atlassian`, and `zscaler_gov`, plus new feature switches `clouds_extra`,
-  `verified_crawlers` and `verified_crawlers_extra`.
+  `atlassian`, `huawei_cloud_geofeed` (Huawei Cloud's RFC 8805 geofeed) and
+  `fastly_ranges` in opt-in `clouds_extra`, and `zscaler_gov` in `zscaler`,
+  plus new feature switches `clouds_extra`, `verified_crawlers` and
+  `verified_crawlers_extra`. `fastly_ranges` maps to a new `cdn_edge`
+  context flag, exactly like `cloudflare_ranges` — never a verdict, and
+  deliberately not `hosting`.
 
 - **Three documentation-as-data clouds** in opt-in `clouds_extra`:
   `scaleway_ranges` (11 v4 + 1 v6), `ibm_cloud_classic` (60 v4) and
@@ -139,13 +162,34 @@ without growing the verdict enum.
   `verified_fetcher`, appended at the END (the to_h append-only contract).
 - `slickvpn_locations` parser rewritten for SlickVPN's site redesign: server
   addresses now come from each card's `data-host` copy button.
-- `windscribe_servers` is `enabled_default` again. It was demoted on
-  2026-09-05 when every Windscribe path answered 403 with a Cloudflare
-  challenge; on 2026-09-12 a plain identifying User-Agent gets 200 and 395 v4
-  ranges from two independent checks. The demotion reasoning still stands for
-  next time: OpenASN does not defeat bot challenges, Tier B runs on the end
-  user's network so a block seen from here may not exist there, and keep-stale
-  means an overlay fetched earlier keeps classifying.
+- **The bundled data seed is refreshed to the 2026-10-02 build**
+  (`build_id` `2026-10-02T19:53:21Z`; every 0.x release so far shipped the
+  2026-07-04 build). This is what a fresh install answers from before its
+  first update. It has a RouteViews-derived IP→ASN backbone (data repo
+  DECISIONS.md D-SRC-2 (backbone): the sapics RIR-stats fill of unannounced
+  space is gone), and its VPN ranges are limited to X4B's own first-party
+  inputs (D-SRC-3: the Apple relay, Mullvad, PIA and Proton feeds X4B merges
+  are stripped). Names are CC0-only (D-SRC-2 (org names)), but the seed
+  ships no orgs file, so `as_org` stays nil until the first update. Seed
+  records: 401,146 IPv4 + 94,409 IPv6 ranges (was 433,579 + 125,604), and
+  `vpn_ipv4` 4,725.
+- The seed now ships the release's `ATTRIBUTION.md`
+  (`lib/openasn/data/seed/ATTRIBUTION.md`). The bundled bins are
+  RouteViews-derived (CC BY 4.0) and include MIT-licensed inputs (X4BNet
+  lists_vpn, brianhama bad-asn-list), and redistributing them in the gem
+  carries their attribution with them. `rake seed:refresh` now also fetches
+  that file and verifies every downloaded file's SHA-256 against the
+  release's `manifest.json` before writing anything.
+- The bundled seed `fetch-manifest.json` grows from 47 to 83 sources and is
+  byte-identical to the data repo's `fetch-manifest.json` at release time.
+  It includes the data repo's `ipverse_as_country` recipe, which this gem
+  deliberately does not execute (it exposes no country); the consistency
+  test records that exemption with its reason.
+- `windscribe_servers` stays `enabled_default` (net unchanged from 0.3.1).
+  It was briefly demoted on `main` on 2026-09-05 when every Windscribe path
+  answered 403 with a Cloudflare challenge, and restored on 2026-09-12 when
+  a plain identifying User-Agent got 200 and 395 v4 ranges from two
+  independent checks.
 - `ovpn_status_servers` (32 URLs, one per datacenter) is replaced by
   `ovpn_servers`, OVPN's client bootstrap API — the same 96 exact IPs and 34
   merged ranges in ONE request. A 32x reduction in traffic aimed at a
@@ -159,14 +203,33 @@ without growing the verdict enum.
 
 ### Security
 
-- `OpenASN::HttpClient` now refuses to follow a redirect whose target is not
-  `http`/`https`, at every hop, and refuses a non-http(s) URL from its caller.
-  Tier B sources and the release host are remote parties this gem does not
-  control; before this change the only thing standing between a hostile
-  `Location: file:///…` and a local-file read was `Net::HTTP` rejecting the
-  URI itself — an implementation detail, and one that surfaced as a bare
-  `ArgumentError` outside the documented `OpenASN::UpdateError` contract.
-  Cross-host http(s) redirects (GitHub release downloads) are unaffected.
+- **Redirects to non-http(s) schemes are refused (#3).** `OpenASN::HttpClient`
+  now refuses to follow a redirect whose target is not `http`/`https`, at
+  every hop, and refuses a non-http(s) or hostless URL from its caller, with
+  an `OpenASN::UpdateError`.
+
+  *Affected:* every release from 0.1.0 through 0.3.1. *Who can trigger it:*
+  anyone who controls a response the gem follows — the operator of any Tier B
+  source (third parties this gem does not control), anyone able to tamper with
+  a plain-`http` source or a redirect hop, or the configured `release_url`
+  host. *What they could do:* 0.3.1 and earlier only scheme-checked a
+  `Location` by testing `start_with?("http")`, then handed whatever came back
+  (`file:///etc/passwd`, `ftp://…`, `data:…`, `gopher://…`) to the next hop.
+  The only thing that stopped that hop from becoming a local-file read or a
+  request in another protocol was `Net::HTTP` itself rejecting non-HTTP URI
+  objects — an implementation detail of the stdlib, not a guarantee of this
+  gem. On current Ruby/net-http this ends in a bare
+  `ArgumentError: not an HTTP URI` (reproduced on Ruby 3.4.2 against 0.3.1's
+  client for `file:`, `ftp:`, `data:` and `gopher:` targets), which escaped
+  the documented `UpdateError` contract; the updater and Tier B executor catch
+  `StandardError`, so in practice the source was marked failed and kept its
+  stale data. No local-file read was observed on any supported Ruby, so treat
+  this as defence in depth, not a known exploit.
+
+  *Not changed:* cross-host http(s) redirects are still followed (GitHub
+  release downloads need them), including to private or link-local http(s)
+  addresses; the gem does no destination filtering, so egress controls
+  remain the right place to restrict where the update job may connect.
 
 ### Fixed
 
@@ -265,6 +328,7 @@ Ergonomics release, driven by dogfooding the analytics/enrichment use case
   ranges, provider-attributed VPN overlays), Rack middleware, Rails install
   generator.
 
+[0.4.0]: https://github.com/openasn/openasn-ruby/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/openasn/openasn-ruby/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/openasn/openasn-ruby/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/openasn/openasn-ruby/compare/v0.1.0...v0.2.0

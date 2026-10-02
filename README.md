@@ -162,8 +162,10 @@ OpenASN.configure do |config|
   config.release_url  = "https://github.com/openasn/openasn/releases/download/latest/" # self-hostable; tag-addressed on purpose (badge-immune, see data repo DECISIONS.md D-REL-1)
   config.pin_version  = nil       # e.g. "v2026.07.05" to pin a dated data release
   config.tier_b       = { apple_relay: true, tor: true, clouds: true,
-                          vpn_providers: true, vpn_heavy: false,
-                          vpn_dns: false, public_relays: false, zscaler: false,
+                          clouds_extra: false, verified_crawlers: true,
+                          verified_crawlers_extra: false, zscaler: false,
+                          swg_egress: false, vpn_providers: true, vpn_heavy: false,
+                          vpn_dns: false, public_relays: false,
                           nazgul_mixed: false, org_names: true }
   config.logger       = Rails.logger
 end
@@ -254,7 +256,14 @@ Measured on the bundled real dataset (433k+ IPv4 ranges, 125k+ IPv6, full overla
 
 ## Data provenance & licensing
 
-Every byte in the dataset is traceable: compiled nightly from PDDL/CC0/MIT-licensed sources ([sapics/ip-location-db](https://github.com/sapics/ip-location-db), [ipverse/as-metadata](https://github.com/ipverse/as-metadata), [X4BNet/lists_vpn](https://github.com/X4BNet/lists_vpn), [brianhama/bad-asn-list](https://github.com/brianhama/bad-asn-list)) plus OpenASN's own curated corrections — with upstream license texts SHA-256-pinned in CI and full per-build provenance in `manifest.json`. The dataset is CC0. The details, gates, and the "fetch ≠ redistribute" legal design live in the [data project README](https://github.com/openasn/openasn).
+Every byte in the dataset is traceable. It is compiled nightly from:
+- an IP→ASN backbone that OpenASN's own code recomputes from [RouteViews](https://www.routeviews.org/) BGP RIB dumps (CC BY 4.0, facts only);
+- CC0/MIT-licensed sources: [ipverse/as-metadata](https://github.com/ipverse/as-metadata), [X4BNet/lists_vpn](https://github.com/X4BNet/lists_vpn) (X4B's own inputs only), [brianhama/bad-asn-list](https://github.com/brianhama/bad-asn-list) and Wikidata;
+- OpenASN's own curated corrections.
+
+Upstream license texts are SHA-256-pinned in CI, and every build records its full provenance in `manifest.json`. The dataset is CC0. The details, gates, and the "fetch ≠ redistribute" legal design live in the [data project README](https://github.com/openasn/openasn).
+
+The gem bundles a seed copy of that dataset. Its credits travel with it in [`lib/openasn/data/seed/ATTRIBUTION.md`](lib/openasn/data/seed/ATTRIBUTION.md). *This product utilizes data provided by RouteViews (www.routeviews.org). Use of this data is subject to the CC BY 4.0 license.*
 
 Sibling of [`nondisposable`](https://github.com/rameerez/nondisposable) (disposable-email blocking) and [`trackdown`](https://github.com/rameerez/trackdown) (IP geolocation) — same philosophy: boring, offline, production-grade primitives for Rails apps.
 

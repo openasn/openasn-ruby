@@ -1,99 +1,173 @@
 {
   "format_version": 1,
   "edition": "core",
-  "build_id": "2026-07-04T20:36:12Z",
+  "build_id": "2026-10-02T19:53:21Z",
   "files": [
     {
       "name": "openasn-ipv4.bin",
-      "sha256": "724015a457a90572670290641060330b5a11327867b22486566b54abd630fcb4",
-      "bytes": 6351346,
-      "records": 433579
+      "sha256": "5b7663e8f4bc3ed2a0587c1a370706cf05a0a829c9363cec2405131b8752a760",
+      "bytes": 5896516,
+      "records": 401146
     },
     {
       "name": "openasn-ipv6.bin",
-      "sha256": "753f2c2ff237ac18a32a24c831622754dfef252c2a301a449d8ad24a8bbd353c",
-      "bytes": 4772984,
-      "records": 125604
+      "sha256": "6e2b6d1645d20d37f281e7fe4c2efaa1509348ad5f0d896ccaf99c5365d95b2b",
+      "bytes": 3587574,
+      "records": 94409
     },
     {
       "name": "openasn-orgs.bin",
-      "sha256": "61dc40bd72e7d12a68606e091f818474bfce89054c10da55dd70ae0d5284cf77",
-      "bytes": 4060956,
-      "records": 123392
+      "sha256": "1227253dfd67817da261dd9ff6b83fbbf365e1338c4fbdff3e19295086bd97cf",
+      "bytes": 53554,
+      "records": 2032
     },
     {
       "name": "asn-categories.csv",
-      "sha256": "d8ed709f56291bd55af399dbb159aff03776e6930f4bc786d3f0cc211c0ee16b",
-      "bytes": 6362920,
-      "records": 123392
+      "sha256": "0eb6dbdb3f8e01854267e1e998348a8db2f6e8b3c255393d2fc262431c8dee5c",
+      "bytes": 3037991,
+      "records": 118721
     },
     {
       "name": "fetch-manifest.json",
-      "sha256": "aceadec08e2c13992f5667724079da73ef20b7b532e6c0618f9c21fdc31357c6",
-      "bytes": 20760,
+      "sha256": "2d7392accb90a3533633307b5c07cad541d3603b41ad9d3c84c398a2a032e487",
+      "bytes": 76844,
       "records": 0
     },
     {
       "name": "ATTRIBUTION.md",
-      "sha256": "ba4cd2c03117800e068762d2ebe29bdfdea182e82bb2f6dd2bc310074760afdc",
-      "bytes": 2399,
+      "sha256": "b037faf14a5a1f5af5b01da5c9926f385af23a622c8a00e5480f0b438f87f8c8",
+      "bytes": 6799,
       "records": 0
     }
   ],
   "sources": [
     {
-      "id": "sapics-origin-asn",
-      "url": "https://github.com/sapics/ip-location-db",
-      "license": "PDDL-1.0",
-      "license_sha256": "e8756fd515b673f3e868bf8d9aa5cbbb28d4611366c654e36977ea5279e6551a",
-      "fetched_at": "2026-07-04T20:26:23Z"
+      "id": "routeviews",
+      "url": "https://www.routeviews.org/",
+      "license": "CC-BY-4.0",
+      "license_sha256": "0887cbd21eab3dce8a4765ca0a11c862827091d062d4a40eec9378ffc1f2c2a9",
+      "fetched_at": "2026-10-02T19:50:37Z"
     },
     {
       "id": "ipverse-as-metadata",
       "url": "https://github.com/ipverse/as-metadata",
       "license": "CC0-1.0",
       "license_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
-      "fetched_at": "2026-07-04T20:02:11Z"
+      "fetched_at": "2026-10-02T19:53:09Z"
     },
     {
       "id": "ipverse-as-ip-blocks",
       "url": "https://github.com/ipverse/as-ip-blocks",
       "license": "CC0-1.0",
       "license_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
-      "fetched_at": "2026-07-04T20:36:14Z"
+      "fetched_at": null
     },
     {
       "id": "x4bnet-lists_vpn",
       "url": "https://github.com/X4BNet/lists_vpn",
       "license": "MIT",
       "license_sha256": "8826b5fbb9d7380264deb636df4adf349eab0e640ca3f2f5481d74cea96ba7a5",
-      "fetched_at": "2026-07-04T20:02:11Z"
+      "fetched_at": "2026-09-13T08:17:58Z"
     },
     {
       "id": "brianhama-bad-asn-list",
       "url": "https://github.com/brianhama/bad-asn-list",
       "license": "MIT",
       "license_sha256": "67690d0688b2b17b2fb74446e0bf58132a389b2e543d9ba0c4c44a60fedd4e67",
-      "fetched_at": "2026-07-04T20:02:12Z"
+      "fetched_at": "2026-07-04T21:58:31Z"
+    },
+    {
+      "id": "wikidata-p3797",
+      "url": "https://www.wikidata.org/wiki/Property:P3797",
+      "license": "CC0-1.0",
+      "license_sha256": "a6c536658d81a4e11e73451e4ff309169a09a319a6a54993bc1cd306d8c2002f",
+      "fetched_at": "2026-10-02T19:53:11Z"
     },
     {
       "id": "openasn-overrides",
       "url": "https://github.com/openasn/openasn",
       "license": "CC0-1.0",
       "license_sha256": null,
-      "fetched_at": "2026-07-04T20:36:14Z"
+      "fetched_at": "2026-10-02T19:53:21Z"
     }
   ],
   "stats": {
     "layer_counts": {
-      "base_ipv4": 433579,
-      "vpn_ipv4": 6405,
-      "dc_ipv4": 28746,
-      "base_ipv6": 125604
+      "base_ipv4": 401146,
+      "vpn_ipv4": 4725,
+      "dc_ipv4": 30330,
+      "base_ipv6": 94409
     },
-    "hosting_asns": 12257,
-    "reference_dc_asns": 899,
-    "reference_coverage": 0.9132
+    "hosting_asns": 12474,
+    "reference_dc_asns": 943,
+    "reference_coverage": 0.894,
+    "org_names": 2032,
+    "org_names_by_source": {
+      "override": 1512,
+      "wikidata": 520
+    },
+    "wikidata_p3797": {
+      "statements": 1859,
+      "restricted_refs_only": 1272,
+      "ended": 1,
+      "deprecated": 6,
+      "no_label": 6,
+      "conflict": 3,
+      "admitted_asns": 567
+    },
+    "countries": 1512,
+    "countries_by_source": {
+      "override": 1099,
+      "wikidata": 413
+    },
+    "wikidata_countries": {
+      "statements": 1287,
+      "deprecated": 8,
+      "ended": 18,
+      "restricted_refs_only": 2,
+      "ambiguous_P17": 8,
+      "ambiguous_P159": 1,
+      "sar": 2,
+      "items_with_country": 696
+    },
+    "drift_ack": {
+      "reason": "D-SRC-3: X4B third-party feeds (Apple relay, Mullvad, PIA, Proton) removed from the vpn overlay (vpn_ipv4 6,644 -> ~4,700). D-SRC-2 (backbone): the IP->ASN backbone is now recomputed from RouteViews RIBs; sapics RIR-stats fill of unannounced space is gone (IPv4 ranges -9.9%, IPv6 ranges -25.4%). Evidence: DECISIONS.md D-SRC-3 and D-SRC-2 (backbone); both merged 2026-09-19 (openasn #10, #12).",
+      "gates": [
+        "vpn_ipv4: 6644 -> 4725 (-28.9% vs previous build); but -28.3% from the best weekly pin v2026.09.13 (6593) - a SLOW SLIDE no single night tripped - acknowledged: \"D-SRC-3: X4B third-party feeds (Apple relay, Mullvad, PIA, Proton) removed from the vpn overlay (vpn_ipv4 6,644 -> ~4,700). D-SRC-2 (backbone): the IP->ASN backbone is now recomputed from RouteViews RIBs; sapics RIR-stats fill of unannounced space is gone (IPv4 ranges -9.9%, IPv6 ranges -25.4%). Evidence: DECISIONS.md D-SRC-3 and D-SRC-2 (backbone); both merged 2026-09-19 (openasn #10, #12).\"",
+        "base_ipv6: 125796 -> 94409 (-25.0% vs previous build); but -25.1% from the best weekly pin v2026.08.23 (126053) - a SLOW SLIDE no single night tripped - acknowledged: \"D-SRC-3: X4B third-party feeds (Apple relay, Mullvad, PIA, Proton) removed from the vpn overlay (vpn_ipv4 6,644 -> ~4,700). D-SRC-2 (backbone): the IP->ASN backbone is now recomputed from RouteViews RIBs; sapics RIR-stats fill of unannounced space is gone (IPv4 ranges -9.9%, IPv6 ranges -25.4%). Evidence: DECISIONS.md D-SRC-3 and D-SRC-2 (backbone); both merged 2026-09-19 (openasn #10, #12).\""
+      ]
+    },
+    "reviewed_baselines": {
+      "base_ipv6": {
+        "value": 94409,
+        "reason": "D-SRC-3: X4B third-party feeds (Apple relay, Mullvad, PIA, Proton) removed from the vpn overlay (vpn_ipv4 6,644 -> ~4,700). D-SRC-2 (backbone): the IP->ASN backbone is now recomputed from RouteViews RIBs; sapics RIR-stats fill of unannounced space is gone (IPv4 ranges -9.9%, IPv6 ranges -25.4%). Evidence: DECISIONS.md D-SRC-3 and D-SRC-2 (backbone); both merged 2026-09-19 (openasn #10, #12).",
+        "reviewed_at": "2026-10-02T19:53:56Z"
+      },
+      "vpn_ipv4": {
+        "value": 4725,
+        "reason": "D-SRC-3: X4B third-party feeds (Apple relay, Mullvad, PIA, Proton) removed from the vpn overlay (vpn_ipv4 6,644 -> ~4,700). D-SRC-2 (backbone): the IP->ASN backbone is now recomputed from RouteViews RIBs; sapics RIR-stats fill of unannounced space is gone (IPv4 ranges -9.9%, IPv6 ranges -25.4%). Evidence: DECISIONS.md D-SRC-3 and D-SRC-2 (backbone); both merged 2026-09-19 (openasn #10, #12).",
+        "reviewed_at": "2026-10-02T19:53:56Z"
+      }
+    },
+    "backbone": "routeviews",
+    "routeviews": {
+      "rib_slot_utc": "20261002.1600",
+      "collectors": [
+        "route-views2",
+        "route-views.eqix",
+        "route-views.linx",
+        "decix.fra",
+        "route-views.napafrica",
+        "route-views.sg",
+        "route-views.sydney",
+        "ix-br.gru",
+        "route-views.wide",
+        "route-views6"
+      ],
+      "peer_ases": 186,
+      "prefixes_kept": 1418418,
+      "min_peers": 2
+    }
   },
   "signature": null
 }
