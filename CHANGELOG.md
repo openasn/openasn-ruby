@@ -162,6 +162,24 @@ should upgrade.
   `verified_fetcher`, appended at the END (the to_h append-only contract).
 - `slickvpn_locations` parser rewritten for SlickVPN's site redesign: server
   addresses now come from each card's `data-host` copy button.
+- **The bundled data seed is refreshed to the 2026-10-02 build**
+  (`build_id` `2026-10-02T19:53:21Z`; every 0.x release so far shipped the
+  2026-07-04 build). This is what a fresh install answers from before its
+  first update. It has a RouteViews-derived IP→ASN backbone (data repo
+  DECISIONS.md D-SRC-2 (backbone): the sapics RIR-stats fill of unannounced
+  space is gone), and its VPN ranges are limited to X4B's own first-party
+  inputs (D-SRC-3: the Apple relay, Mullvad, PIA and Proton feeds X4B merges
+  are stripped). Names are CC0-only (D-SRC-2 (org names)), but the seed
+  ships no orgs file, so `as_org` stays nil until the first update. Seed
+  records: 401,146 IPv4 + 94,409 IPv6 ranges (was 433,579 + 125,604), and
+  `vpn_ipv4` 4,725.
+- The seed now ships the release's `ATTRIBUTION.md`
+  (`lib/openasn/data/seed/ATTRIBUTION.md`). The bundled bins are
+  RouteViews-derived (CC BY 4.0) and include MIT-licensed inputs (X4BNet
+  lists_vpn, brianhama bad-asn-list), and redistributing them in the gem
+  carries their attribution with them. `rake seed:refresh` now also fetches
+  that file and verifies every downloaded file's SHA-256 against the
+  release's `manifest.json` before writing anything.
 - The bundled seed `fetch-manifest.json` grows from 47 to 83 sources and is
   byte-identical to the data repo's `fetch-manifest.json` at release time.
   It includes the data repo's `ipverse_as_country` recipe, which this gem
