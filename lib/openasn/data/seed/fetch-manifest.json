@@ -406,14 +406,14 @@
     },
     {
       "id": "scaleway_ranges",
-      "url": "https://www.scaleway.com/en/docs/account/reference-content/scaleway-network-information.md",
+      "url": "https://www.scaleway.com/en/docs/account/support/scaleway-network-information.md",
       "parser": "scaleway_network_mdx",
       "maps_to": "hosting",
       "provider": "scaleway",
       "cadence_hours": 168,
       "on_failure": "keep_stale",
       "enabled_default": false,
-      "notes": "Scaleway (Online SAS / Iliad) never built an ip-ranges endpoint; the authoritative statement is a documentation page, and scaleway.com serves it as raw markdown at the .md URL above (200, text/markdown, 2373 bytes, verified live 2026-09-12 - byte-identical to the MDX in Scaleway's own docs repo, so we cite the first-party domain and depend on nobody else). Section '## IP ranges used by Scaleway' -> 12 v4 + 1 v6, merged to 11 v4 + 1 v6. The parser STOPS at the next H2 on purpose, and that heading is named: 'DNS cache servers and NTP servers' (anchor #dns-cache-servers-and-ntp-servers, H3s France / Netherlands / Poland), which lists BARE prefix-less host addresses in the same bullet style - 51.159.69.162, 2001:bc8:408:1::12, 51.159.69.156, 51.159.47.28 and more. Swallowing that section would turn Scaleway's public resolvers into claimed hosting ranges. The page has exactly three H2s; the third is 'Additional Dedibox services'. FP note: 78.232.0.0/16 sits inside historically-Free-SAS residential space, and the SHIPPED ARTIFACT still resolves it to residential_isp AS12322 Free SAS (measured 2026-09-12), so enabling this recipe flips 65,536 addresses from residential to hosting. RIPE RDAP for 78.232.0.0 (checked 2026-09-12) returns handle 78.232.0.0 - 78.232.255.255, name SCALEWAY, type ASSIGNED PA, country FR, org ORG-ONLI1-RIPE 'Scaleway', maintainers ONLINE-NET-MNT and PROXAD-MNT - so the assignment is Scaleway's and the label corrects stale data rather than mislabelling people; the surviving PROXAD-MNT co-maintainer is the Free-SAS history, not a counter-argument. The core/recipe disagreement is real and is filed for curation rather than papered over here. Opt-in because Scaleway's ASNs (AS12876, AS51207) already carry hosting from the core artifact; this recipe buys range-level precision and provider attribution."
+      "notes": "Scaleway (Online SAS / Iliad) never built an ip-ranges endpoint; the authoritative statement is a documentation page, and scaleway.com serves it as raw markdown at the .md URL above (200, text/markdown, 2373 bytes, verified live 2026-09-12 - byte-identical to the MDX in Scaleway's own docs repo, so we cite the first-party domain and depend on nobody else). Section '## IP ranges used by Scaleway' -> 12 v4 + 1 v6, merged to 11 v4 + 1 v6. The parser STOPS at the next H2 on purpose, and that heading is named: 'DNS cache servers and NTP servers' (anchor #dns-cache-servers-and-ntp-servers, H3s France / Netherlands / Poland), which lists BARE prefix-less host addresses in the same bullet style - 51.159.69.162, 2001:bc8:408:1::12, 51.159.69.156, 51.159.47.28 and more. Swallowing that section would turn Scaleway's public resolvers into claimed hosting ranges. The page has exactly three H2s; the third is 'Additional Dedibox services'. FP note: 78.232.0.0/16 sits inside historically-Free-SAS residential space, and the SHIPPED ARTIFACT still resolves it to residential_isp AS12322 Free SAS (measured 2026-09-12), so enabling this recipe flips 65,536 addresses from residential to hosting. RIPE RDAP for 78.232.0.0 (checked 2026-09-12) returns handle 78.232.0.0 - 78.232.255.255, name SCALEWAY, type ASSIGNED PA, country FR, org ORG-ONLI1-RIPE 'Scaleway', maintainers ONLINE-NET-MNT and PROXAD-MNT - so the assignment is Scaleway's and the label corrects stale data rather than mislabelling people; the surviving PROXAD-MNT co-maintainer is the Free-SAS history, not a counter-argument. The core/recipe disagreement is real and is filed for curation rather than papered over here. Opt-in because Scaleway's ASNs (AS12876, AS51207) already carry hosting from the core artifact; this recipe buys range-level precision and provider attribution. 2026-10-02: Scaleway moved the page from /docs/account/reference-content/ to /docs/account/support/ (the old .md URL now 404s; the old HTML URL 301s to the new one). The url above is the new .md path, verified live 2026-10-02: 200, text/markdown, same section, same parse (13 tokens -> 11 v4 + 1 v6)."
     },
     {
       "id": "ibm_cloud_classic",
@@ -748,7 +748,7 @@
       "on_failure": "keep_stale",
       "enabled_default": false,
       "resolve_hostnames": true,
-      "notes": "Opt-in DNS-expanded source: first-party TorGuard TCP OpenVPN archive. The earlier servers.json endpoint hit a bot challenge, but these public config archives fetched cleanly live on 2026-07-05. 2026-09-05 re-check: 403 with Cloudflare 'error code: 1005', which is an ASN-level ban of the network the check ran from - NOT evidence the archive is gone. Left enabled-capable on purpose: Tier B is executed by the end user's own server, and keep_stale absorbs a 403 from a banned vantage."
+      "notes": "Opt-in DNS-expanded source: first-party TorGuard TCP OpenVPN archive. The earlier servers.json endpoint hit a bot challenge, but these public config archives fetched cleanly live on 2026-07-05. 2026-09-05 re-check: 403 with Cloudflare 'error code: 1005', which is an ASN-level ban of the network the check ran from - NOT evidence the archive is gone. Left enabled-capable on purpose: Tier B is executed by the end user's own server, and keep_stale absorbs a 403 from a banned vantage. 2026-10-02 re-check: 403 again, this time with a Cloudflare managed-challenge interstitial ('Just a moment...') rather than error 1005, i.e. TorGuard is challenging automated fetchers. OpenASN does not defeat bot challenges, so nothing was changed to get around it; the recipe stays opt-in (enabled_default false) and keep_stale holds any overlay fetched earlier. A vantage that is not challenged still works."
     },
     {
       "id": "torguard_openvpn_udp",
@@ -760,7 +760,7 @@
       "on_failure": "keep_stale",
       "enabled_default": false,
       "resolve_hostnames": true,
-      "notes": "Opt-in DNS-expanded source: first-party TorGuard UDP OpenVPN archive. Usually overlaps TCP, but keeping both avoids silent protocol-specific omissions."
+      "notes": "Opt-in DNS-expanded source: first-party TorGuard UDP OpenVPN archive. Usually overlaps TCP, but keeping both avoids silent protocol-specific omissions. 2026-10-02 re-check: 403 with the same Cloudflare managed-challenge interstitial as the TCP archive (see torguard_openvpn_tcp); not worked around, stays opt-in, keep_stale applies."
     },
     {
       "id": "fastestvpn_tcp",
