@@ -91,15 +91,22 @@ r.as_org          # "Hetzner Online" (CC0 name; nil for ASNs without one — see
 r.category        # "hosting"          (raw upstream category)
 r.network_role    # "major_transit"    (raw upstream routing role)
 r.provider        # "aws" | "ProtonVPN" | "iCloud Private Relay" | nil (overlay attribution)
-r.sources         # [:x4b_vpn] — which data layer decided; every verdict is auditable
-r.flag_names      # [:vpn_provider, :bad_asn] — ASN-level signals, decoded to names
+r.sources         # [:x4b_vpn] — Array of Symbols: which data layer decided; every verdict is auditable
+r.flag_names      # [:bad_asn, :vpn_provider] — Array of Symbols: ASN-level signals, decoded
 r.bad_asn?        # ASN is in brianhama/bad-asn-list (infrastructure signal, not an accusation)
 r.flag?(:cdn)     # named check for any flag in r.flag_names' vocabulary
 r.context_flags   # [:cloudflare_range] — context that never decides verdicts
 r.unrouted?       # true when no ASN announces this IP
-r.flags           # raw u16 for power users (see the data project's FORMAT.md)
-r.to_h            # everything, stable keys — built for shadow-mode logging
+r.flags           # 818 — an INTEGER (raw u16 bitfield, FORMAT.md), not a list: use flag_names
+r.to_h            # everything, stable keys (sources, flags, flag_names, …) — built for shadow-mode logging
 ```
+
+> **`flags` vs `flag_names`.** `sources`, `flag_names` and `context_flags` are
+> Arrays of Symbols; `flags` is the one Integer. `r.flags.map(&:to_s)` raises
+> `NoMethodError` — and if a `rescue` swallows it, every lookup quietly logs as
+> an error. Write `r.flag_names.map(&:to_s)`, or `r.flag?(:bad_asn)` for a single
+> check. `to_h` always carries `flag_names`, and `inspect` shows it whenever it is
+> non-empty.
 
 Note the deliberate asymmetry: `:business`, `:education`, `:government`, and `:unknown` are **neither** `infrastructure?` **nor** `likely_human?` — that's your call, not the gem's. There is intentionally no `suspicious?` — that's a policy word, and your app owns policy.
 
@@ -117,8 +124,8 @@ OpenASN returns one object, but its fields answer different questions:
 | `sources` | Which rule/data layer decided the verdict | Best debugging field. Log it. |
 | `provider` | Provider attribution from an exact overlay hit (`"aws"`, `"azure"`, `"ProtonVPN"`, ...) | Display/log it when present; nil is normal. |
 | `context_flags` | Extra context that never decides the verdict | Useful for policy experiments; do not block solely on it. |
-| `flag_names` | ASN-level signals, decoded (`:bad_asn`, `:vpn_provider`, `:mobile_carrier`, `:enterprise_gw`, `:cdn`, `:hosting_extra`) | Display/log them; `bad_asn?` and `flag?(:name)` are the sugar. |
-| `flags` | Packed low-level artifact bits | Wire detail; prefer `flag_names` in app code. |
+| `flag_names` | ASN-level signals, decoded: an Array of Symbols like `sources` (`:bad_asn`, `:vpn_provider`, `:mobile_carrier`, `:enterprise_gw`, `:cdn`, `:hosting_extra`) | Display/log/iterate them; `bad_asn?` and `flag?(:name)` are the sugar. |
+| `flags` | Packed low-level artifact bits: an **Integer**, not an Array | Wire detail; `flags.map` raises. Use `flag_names` in app code. |
 
 Common examples:
 
@@ -127,11 +134,31 @@ Common examples:
 - `bad_asn?` is not an accusation and not a verdict. It means the ASN appears in `brianhama/bad-asn-list`, a curated MIT-licensed hosting/cloud/colo ASN list. When that signal decides classification, `sources` includes `:asn_bad_asn`.
 - `:residential_isp` means "known eyeball ISP, no stronger infrastructure signal found." It does **not** mean "safe user."
 
+### How strong is this `:hosting`? Read `sources`
+
+Every `:hosting` verdict is `infrastructure?`, but the evidence behind it comes in three strengths, and `sources` tells you which one you got:
+
+| `sources` | Evidence | Strength |
+|---|---|---|
+| a range overlay: `[:x4b_dc]`, `[:aws]`, `[:gcp]`, `[:azure]`, … | the address sits inside a published datacenter or cloud range | strongest |
+| contains `:asn_bad_asn`, `:asn_hosting_extra` or `:asn_cdn` | the ASN is on a curated hosting/CDN list | strong, ASN-wide |
+| exactly `[:asn_category]` | only the upstream ASN category ([ipverse/as-metadata](https://github.com/ipverse/as-metadata)) says `hosting`; no list or range corroborates it | **weakest** |
+
+The category-only row is where false positives concentrate: a regional ISP or a national research network that also sells hosting or transit gets the `hosting` category for its whole ASN, home and campus users included. Measured in a Spanish production app (2026-10-05, 2026-10-02 seed), real residential, business and university users arrived from RedIRIS AS766 (Spain's academic network), Olivenet AS201746, Free Technologies Excom AS34471 and SAREnet AS3262, all `:hosting` with `sources == [:asn_category]`.
+
+The verdict ladder is shared by every OpenASN client, so the gem does not quietly downgrade these. If your policy *acts* on `:hosting`, weigh `r.hosting? && r.sources == [:asn_category]` as the weak case (show it, don't score it alone). Wrong categories are fixed in the data, one evidenced line in the data repo's [`data/overrides/corrections.yml`](https://github.com/openasn/openasn/blob/main/data/overrides/corrections.yml), and every client picks the fix up from the nightly release.
+
+### A hosting IP is not always the user: automated fetches
+
+A request can come from a datacenter even though a person is behind the account: something fetched a URL *on their behalf*. The classic case is an e-mail confirmation link. Outlook Safe Links, Gmail and other mail-security scanners open links before (or instead of) the recipient, from Microsoft (AS8075) or Google (AS15169) addresses that correctly classify `:hosting`. In the same production app, 48 of 1,232 accounts had their confirmation link opened from a hosting IP, and for 12 of them that hit was the only infrastructure observation they had.
+
+That verdict is accurate about the *network* and says nothing about the *user*. Classify requests by context: never score a hit on a confirmation, unsubscribe, password-reset or other e-mailed link, and don't let such a GET sign anyone in or stand in for their login IP. `r.crawler` / `r.verified_fetcher?` cover operators that publish their fetcher ranges (ChatGPT-User, Google's user-triggered fetchers, …); mail scanners mostly publish none, so OpenASN cannot recognize them. Your request context can.
+
 ### Verdict cheat sheet
 
 | Verdict | Meaning | Confidence | Advice |
 |---|---|---|---|
-| `:hosting` | datacenter/cloud/colo | high | fine to challenge on sensitive flows |
+| `:hosting` | datacenter/cloud/colo | high (range or curated list); **low** when `sources == [:asn_category]` alone (see above) | fine to challenge on sensitive flows; never on an e-mailed link hit |
 | `:vpn` | known VPN egress | high | challenge > block (privacy users are customers too) |
 | `:tor_exit` | Tor exit node | high (with Tier B fresh) | your policy |
 | `:relay` | iCloud Private Relay | high | **treat like CGNAT — real paying humans** (Apple says the same) |
