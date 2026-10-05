@@ -32,6 +32,16 @@ module OpenASN
   # servers). Rules 12/16: see the data repo's DECISIONS.md D-IMPL-1 —
   # every national telco carries a transit role in upstream data; only
   # pure tier-1 backbone is genuinely ambiguous.
+  #
+  # Rule 10's category-only branch (sources == [:asn_category]) is the
+  # weakest hosting evidence on the ladder: nothing but the upstream ipverse
+  # category, which also lands on regional ISPs and research networks that
+  # sell hosting (RedIRIS AS766, Olivenet AS201746, Free Technologies Excom
+  # AS34471, SAREnet AS3262 — real home/campus users, measured 2026-10-05).
+  # It stays :hosting here on purpose: the ladder is a cross-client contract
+  # (pipeline, spot panel, openasn-js/-python). Wrong categories are fixed
+  # in the data repo's data/overrides/corrections.yml; the README tells
+  # consumers to read `sources` before acting on a :hosting verdict.
   module Classifier
     # The closed `role` vocabulary a fetch-manifest source may declare, in
     # precedence order. The split is not cosmetic: an autonomous crawler and

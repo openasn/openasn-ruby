@@ -181,6 +181,32 @@ class ResultTest < Minitest::Test
     refute clean.bad_asn?
   end
 
+  # `flags` is the raw Integer bitfield; `flag_names` is the Symbol list that
+  # mirrors `sources`. A consumer once wrote `r.flags.map(&:to_s)` beside
+  # `r.sources.map(&:to_s)`, rescued the NoMethodError, and logged 2,300
+  # lookups as errors. Pin the shapes so the asymmetry stays deliberate and
+  # documented, and pin that inspect/to_h surface the names, not the bits.
+  def test_flags_is_the_bitfield_and_flag_names_is_the_list_beside_sources
+    flags = OpenASN::BinaryFormat::FLAG_BAD_ASN | OpenASN::BinaryFormat::FLAG_CDN
+    r = OpenASN::Result.new(ip: "192.0.2.1", verdict: :hosting, asn: 64_500,
+                            sources: [:asn_bad_asn], flags: flags)
+
+    assert_kind_of Integer, r.flags
+    refute_respond_to r.flags, :map
+    assert_kind_of Array, r.sources
+    assert_kind_of Array, r.flag_names
+    assert(r.flag_names.all?(Symbol))
+    assert_equal %w[bad_asn cdn], r.flag_names.map(&:to_s)
+
+    h = r.to_h
+    assert_equal flags, h[:flags]
+    assert_equal %i[bad_asn cdn], h[:flag_names]
+
+    assert_includes r.inspect, "flag_names=[:bad_asn, :cdn]"
+    refute_includes r.inspect, "flags=#{flags}"
+    refute_includes build(:residential_isp).inspect, "flag_names="
+  end
+
   def test_every_verdict_has_a_label
     OpenASN::Result::VERDICTS.each do |v|
       label = build(v).label

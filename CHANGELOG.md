@@ -1,5 +1,37 @@
 # Changelog
 
+## [Unreleased]
+
+No verdict, precedence, `to_h` key or config change.
+
+### Changed
+
+- `Result#inspect` (and its alias `to_s`) now shows `flag_names=[…]` next to
+  `sources=[…]` when the ASN carries any flag, so a console session puts the
+  two Symbol lists side by side. Neither is part of the stability contract;
+  log `to_h`.
+
+### Documentation
+
+- **`flags` vs `flag_names`.** `flags` is the raw Integer bitfield; `sources`,
+  `flag_names` and `context_flags` are Arrays of Symbols. A consumer wrote
+  `r.flags.map(&:to_s)` beside `r.sources.map(&:to_s)`, a `rescue` swallowed
+  the `NoMethodError`, and 2,300 lookups silently logged as errors. The README
+  API block, the field table and the `Result` reader comments now say so side
+  by side, and a test pins both shapes, `to_h[:flag_names]` and `inspect`.
+- **How strong is a `:hosting` verdict?** New README section ranking `sources`:
+  range overlay (strongest), curated ASN list, and `[:asn_category]` alone
+  (weakest). Category-only hosting misreads regional ISPs and research
+  networks; measured in a Spanish production app on 2026-10-05: RedIRIS AS766,
+  Olivenet AS201746, Free Technologies Excom AS34471, SAREnet AS3262. The
+  ladder is unchanged (it is a cross-client contract, see the note above
+  `Classifier`); the fix for a wrong category is a `corrections.yml` line in
+  the data repo.
+- **Automated fetches.** New README section: an e-mail confirmation link
+  opened by Outlook Safe Links or Gmail's scanner is a correct `:hosting`
+  verdict about the network that says nothing about the user. Classify by
+  request context and never score an e-mailed-link hit.
+
 ## [0.4.0] - 2026-10-02
 
 The agent-web release: OpenASN can now answer "this hosting IP is Googlebot"

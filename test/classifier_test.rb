@@ -150,6 +150,57 @@ class ClassifierTest < Minitest::Test
     assert_includes r.sources, :asn_hosting_extra
   end
 
+  # Rule 10's category-only branch is the weakest hosting evidence, and its
+  # known false positives are regional ISPs and research networks. The flag
+  # shapes below are the 2026-10-02 seed's, for ASNs whose real home/campus
+  # users a Spanish production app saw as :hosting on 2026-10-05. The ladder
+  # stays put (cross-client contract); what this pins is the contract the
+  # README hands consumers instead:
+  #   1. category-only hosting is exactly sources == [:asn_category], so an
+  #      app can tell it from a range or a curated list;
+  #   2. a corrections.yml category fix in the data repo is enough to move
+  #      those ASNs to an eyeball/education verdict;
+  #   3. it is NOT enough when a curated flag also fires (AIRE AS29119 carries
+  #      bad_asn): that needs the upstream list entry, not a category line.
+  def test_category_only_hosting_is_distinguishable_and_fixed_by_a_category_correction
+    hosting = FixtureData.flags(category: "hosting", role: "midsize_transit")
+    extra = [
+      ["1.0.40.0/24", 766,    hosting], # RedIRIS (Red.es), Spain's academic network
+      ["1.0.41.0/24", 201_746, hosting], # Olivenet Network S.L.
+      ["1.0.42.0/24", 34_471, hosting], # Free Technologies Excom S.L.
+      ["1.0.43.0/24", 3262,   hosting], # SAREnet, S.A.
+      ["1.0.44.0/24", 29_119, FixtureData.flags(category: "hosting", role: "major_transit",
+                                                bits: [OpenASN::BinaryFormat::FLAG_BAD_ASN])], # AIRE Networks
+      # the same ASNs after a corrections.yml line (category only; role kept)
+      ["1.0.50.0/24", 766,    FixtureData.flags(category: "education_research", role: "midsize_transit")],
+      ["1.0.51.0/24", 201_746, FixtureData.flags(category: "isp", role: "midsize_transit")],
+      ["1.0.54.0/24", 29_119, FixtureData.flags(category: "isp", role: "major_transit",
+                                                bits: [OpenASN::BinaryFormat::FLAG_BAD_ASN])]
+    ].map { |(cidr, asn, fl)| [*FixtureData.range(cidr), asn, fl] }
+    FixtureData.write_artifact(File.join(@test_data_dir, "openasn-ipv4.bin"), family: :ipv4,
+                               base: FixtureData.base_rows_v4 + extra,
+                               vpn: FixtureData.vpn_rows_v4, dc: FixtureData.dc_rows_v4)
+
+    %w[1.0.40.9 1.0.41.9 1.0.42.9 1.0.43.9].each do |ip|
+      r = look(ip)
+      assert_equal :hosting, r.verdict, ip
+      assert_predicate r, :infrastructure?, ip
+      assert_equal [:asn_category], r.sources, ip
+      assert_empty r.flag_names, ip
+    end
+
+    aire = look("1.0.44.9")
+    assert_equal :hosting, aire.verdict
+    refute_equal [:asn_category], aire.sources
+    assert_equal %i[asn_bad_asn asn_category], aire.sources
+
+    assert_equal :education, look("1.0.50.9").verdict
+    assert_equal :residential_isp, look("1.0.51.9").verdict
+    corrected_aire = look("1.0.54.9")
+    assert_equal :hosting, corrected_aire.verdict
+    assert_equal [:asn_bad_asn], corrected_aire.sources
+  end
+
   # --- rule 11: mobile ---------------------------------------------------------
 
   def test_mobile_flag_beats_isp_category

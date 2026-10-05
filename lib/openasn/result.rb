@@ -55,8 +55,23 @@ module OpenASN
     }.freeze
 
     attr_reader :ip, :verdict, :asn, :as_org, :category, :network_role,
-                :provider, :sources, :flags, :context_flags, :flag_names,
-                :crawler, :crawler_role
+                :provider, :context_flags, :crawler, :crawler_role
+
+    # Array of Symbols: which rule/data layer decided the verdict
+    # ([:x4b_dc], [:asn_category], [:aws], …).
+    attr_reader :sources
+
+    # Array of Symbols: the ASN-level signals, decoded ([:bad_asn, :cdn]).
+    # This is the list to log, display and iterate — the sibling of
+    # `sources`, not `flags`.
+    attr_reader :flag_names
+
+    # Integer: the raw u16 bitfield from the artifact (FORMAT.md). NOT an
+    # Array — `flags.map` raises NoMethodError. Reach for `flag_names` (or
+    # `flag?(:name)`) unless you are doing bit arithmetic. A consumer that
+    # wrote `r.flags.map(&:to_s)` next to `r.sources.map(&:to_s)` and
+    # rescued the error read every one of 2,300 lookups as "error".
+    attr_reader :flags
 
     def initialize(ip:, verdict:, asn: nil, as_org: nil, category: nil,
                    network_role: nil, provider: nil, sources: [], flags: 0,
@@ -155,8 +170,11 @@ module OpenASN
       }
     end
 
+    # Shows `flag_names` (never the raw `flags` Integer) next to `sources`, so
+    # the two Symbol lists are what a console session puts side by side.
     def inspect
-      "#<OpenASN::Result #{ip} verdict=#{verdict}#{asn ? " AS#{asn}" : ''}#{as_org ? " (#{as_org})" : ''} sources=#{sources.inspect}>"
+      "#<OpenASN::Result #{ip} verdict=#{verdict}#{asn ? " AS#{asn}" : ''}#{as_org ? " (#{as_org})" : ''} " \
+        "sources=#{sources.inspect}#{flag_names.empty? ? '' : " flag_names=#{flag_names.inspect}"}>"
     end
     alias to_s inspect
   end
