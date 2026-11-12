@@ -26,6 +26,7 @@ module OpenASN
       @load_mutex = Mutex.new
       @last_disk_check = 0.0
       @loaded_manifest_mtime = nil
+      @stale_seed_warned = false
     end
 
     def snapshot
@@ -46,6 +47,7 @@ module OpenASN
         @snapshot = Snapshot.build(@config)
         @loaded_manifest_mtime = manifest_mtime
         @last_disk_check = monotonic_now
+        warn_once_if_stale_seed(@snapshot)
         @snapshot
       end
     end
@@ -80,8 +82,22 @@ module OpenASN
         @snapshot = Snapshot.build(@config)
         @loaded_manifest_mtime = manifest_mtime
         @last_disk_check = monotonic_now
+        warn_once_if_stale_seed(@snapshot)
         @snapshot
       end
+    end
+
+    # Serving the gem's bundled seed means no update has succeeded in
+    # this data_dir: lookups work, but on data as old as the gem release.
+    # Say so once per process (load path only, under the load mutex; never
+    # on lookups). README "Keeping the data fresh".
+    def warn_once_if_stale_seed(snap)
+      return if @stale_seed_warned || snap.origin != :seed || snap.age_seconds <= STALE_AFTER
+
+      @stale_seed_warned = true
+      days = snap.age_seconds / 86_400
+      @config.logger.warn("openasn: serving the bundled seed (build #{snap.build_id}, #{days} days old) " \
+                          "because data_dir has no usable update - call OpenASN.update! at boot and on a schedule")
     end
 
     def disk_check_due?
