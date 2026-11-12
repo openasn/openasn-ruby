@@ -78,6 +78,38 @@ class DatasetTest < Minitest::Test
     refute OpenASN.data_stale_on_disk?(max_age: 100 * 365 * 86_400)
     assert OpenASN.data_stale_on_disk?(max_age: 1)
   end
+
+  def capture_log
+    io = StringIO.new
+    configure { |c| c.logger = Logger.new(io) }
+    io
+  end
+
+  def test_an_old_seed_warns_once_per_process
+    log = capture_log
+    OpenASN::Snapshot.any_instance.stubs(:age_seconds).returns(30 * 86_400)
+    OpenASN.lookup("8.8.8.8")
+    OpenASN.dataset.reload!
+    assert_equal :seed, OpenASN.dataset_info[:origin]
+    assert_equal 1, log.string.scan("serving the bundled seed").length
+    assert_includes log.string, "30 days old"
+    assert_includes log.string, "OpenASN.update!"
+  end
+
+  def test_a_fresh_seed_does_not_warn
+    log = capture_log
+    OpenASN::Snapshot.any_instance.stubs(:age_seconds).returns(86_400)
+    OpenASN.lookup("8.8.8.8")
+    refute_includes log.string, "bundled seed"
+  end
+
+  def test_old_downloaded_data_does_not_warn_about_the_seed
+    FixtureData.install_canonical(@test_data_dir) # BUILD_TS is July 2026
+    log = capture_log
+    OpenASN.lookup("8.8.8.8")
+    assert_equal :data_dir, OpenASN.dataset_info[:origin]
+    refute_includes log.string, "bundled seed"
+  end
 end
 
 class ResultTest < Minitest::Test

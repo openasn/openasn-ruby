@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- One warning per process when the dataset in use is the bundled seed and it
+  is more than 7 days old (`Dataset::STALE_AFTER`). That state means no
+  update has run in `data_dir`, so lookups answer from data as old as the gem
+  release. README "Keeping the data fresh" explains how to call `OpenASN.update!` at boot and
+  daily. Logged on the load path only, never per lookup.
+
 ## [0.4.0] - 2026-10-02
 
 The agent-web release: OpenASN can now answer "this hosting IP is Googlebot"

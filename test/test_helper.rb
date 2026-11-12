@@ -24,7 +24,13 @@ class Minitest::Test
   def setup
     OpenASN.reset!
     @test_data_dir = Dir.mktmpdir("openasn-test")
-    OpenASN.configure { |c| c.data_dir = @test_data_dir }
+    OpenASN.configure do |c|
+      c.data_dir = @test_data_dir
+      # The real bundled seed is usually weeks old by the time tests run, so
+      # its one-time stale-seed warning would print in every seed-backed test.
+      # Tests that assert on logging install their own logger.
+      c.logger = Logger.new(File::NULL)
+    end
   end
 
   def teardown

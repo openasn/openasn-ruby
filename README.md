@@ -66,6 +66,17 @@ and fetch yesterday's release.
 
 Not on Rails? `OpenASN.lookup` works anywhere Ruby ≥ 3.1 runs; schedule `OpenASN.update!` daily with cron/whenever.
 
+### Keeping the data fresh
+
+**Until an update succeeds, the gem answers from its bundled seed: a snapshot as old as the gem release you installed.** Lookups keep working and nothing errors, so a missing update is easy to miss. Check with `OpenASN.dataset_info[:origin]`: `:seed` means no update has run in your `data_dir` yet, and `built_at` shows how old the data is.
+
+Do both of these:
+
+1. **Call `OpenASN.update!` once at boot**, or enqueue `OpenASN::UpdateJob`, so a fresh deploy doesn't serve the seed for a day.
+2. **Run it daily** after the 03:17 UTC data build: the generated `config/recurring.yml` entry on Solid Queue, or your own scheduler (Sidekiq-cron, GoodJob, cron, whenever).
+
+On Rails with `auto_update` on, the Railtie enqueues a refresh at boot when the data on disk is more than 7 days old. That only works if an ActiveJob backend actually runs the job. When the seed in use is more than 7 days old, the gem logs one warning per process (`openasn: serving the bundled seed …`).
+
 ## The API
 
 ### Lookup
